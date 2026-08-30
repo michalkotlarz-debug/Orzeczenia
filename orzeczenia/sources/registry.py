@@ -12,10 +12,6 @@ from .nsa_cbosa import NsaSource
 
 log = logging.getLogger("orzecznik.registry")
 
-# Portale HTML oddają wyniki po tyle na stronę - nie da się poprosić od razu
-# o 50 czy 100, trzeba doczytać tyle ich "natywnych" stron, ile potrzeba.
-NATIVE_PAGE_SIZE = 10
-
 
 class Registry:
     def __init__(self, cfg):
@@ -53,31 +49,25 @@ class Registry:
             if not keys:
                 return result
 
-        # Każdy wybrany rozmiar strony tłumaczymy na zakres natywnych stron
-        # portalu (po NATIVE_PAGE_SIZE): per_page=50 na drugiej stronie -> strony
-        # 6-10 u źródła. Zwykłe użycie (per_page=10-20) to nadal jedna-dwie
-        # strony, więc obciążenie portali rośnie tylko wtedy, gdy ktoś faktycznie
-        # poprosi o więcej wyników naraz.
-        pages_per_source = max(1, -(-per_page // NATIVE_PAGE_SIZE))
-        native_start = (page - 1) * pages_per_source + 1
-        native_pages = range(native_start, native_start + pages_per_source)
-
+        # UWAGA: celowo NIE mnożymy zapytań do portalu przez per_page. Wcześniejsza
+        # wersja pobierała tyle natywnych stron portalu (po NATIVE_PAGE_SIZE), ile
+        # trzeba było, żeby złożyć per_page=50/100 - ale to sekwencyjne zapytania
+        # (limiter ~1,2s między nimi na ten sam host, żeby nie oberwać CAPTCHĄ),
+        # więc "Następna" na wynikach live potrafiła trwać kilka-kilkanaście sekund.
+        # Dla wyszukiwania na żywo per_page jest więc tylko górnym limitem
+        # WYŚWIETLANIA (ile pokazać z tego, co i tak przyszło z jednej natywnej
+        # strony), nie mnożnikiem zapytań - szybkość ważniejsza niż dobicie do
+        # dokładnie żądanej liczby w tym (i tak drugorzędnym od Fazy 1) trybie.
         def run(key: str):
             src = self.sources[key]
-            collected: list[Hit] = []
-            total = 0
             try:
-                for native_page in native_pages:
-                    hits, total = src.search(q, native_page)      # type: ignore[attr-defined]
-                    if not hits:
-                        break
-                    collected.extend(hits)
-                return key, (collected, total), None
+                hits, total = src.search(q, page)                  # type: ignore[attr-defined]
+                return key, (hits, total), None
             except (RateLimited, SourceUnavailable) as exc:
-                return key, (collected, 0), str(exc)
+                return key, ([], 0), str(exc)
             except Exception as exc:                            # nieoczekiwane
                 log.exception("[%s] błąd wyszukiwania", key)
-                return key, (collected, 0), f"nieoczekiwany błąd: {exc}"
+                return key, ([], 0), f"nieoczekiwany błąd: {exc}"
 
         with ThreadPoolExecutor(max_workers=max(1, len(keys))) as pool:
             for key, (hits, total), err in pool.map(run, keys):
