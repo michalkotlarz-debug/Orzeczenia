@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -34,6 +34,11 @@ log = logging.getLogger("orzecznik.ms")
 
 N = "$N"
 PER_PAGE = 10
+
+# Poprzedza cały dostępny cyfrowy zbiór portalu (sprawdzone na żywo: to samo
+# co brak dolnego ograniczenia w ogóle, gdyby portal na to pozwalał - patrz
+# EARLIEST_DATE w obserwator.py/archiwum.py, ten sam próg).
+EARLIEST_DATE = "2000-01-01"
 
 SORTS = {
     "relevance": ("score", "descending"),
@@ -79,10 +84,14 @@ class MsSource:
             date_from, date_to = "", ""
             sort_field, sort_dir = "datapublikacji", "descending"
         if q.is_empty():
-            # bez żadnego kryterium portal nie zwraca nic - pytamy o ostatnią dekadę
-            today = date.today()
-            date_from = (today - timedelta(days=3650)).isoformat()
-            date_to = today.isoformat()
+            # Bez żadnego kryterium (włącznie z datami) portal nie zwraca nic -
+            # trzeba podać jakiś zakres. "2000-01-01" poprzedza cały cyfrowy
+            # zbiór (sprawdzone na żywo: daje 464 809 - tyle samo co brak
+            # dolnego ograniczenia w ogóle, gdyby portal na to pozwalał), więc
+            # to praktycznie "od początku", nie sztuczne obcięcie do ostatnich
+            # N lat.
+            date_from = EARLIEST_DATE
+            date_to = date.today().isoformat()
             sort_field, sort_dir = "datapublikacji", "descending"
 
         parts = [
