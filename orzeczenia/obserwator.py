@@ -20,6 +20,7 @@ from datetime import date, datetime, timedelta, timezone
 from .config import Config
 from .http import RateLimited, SourceUnavailable
 from .sources.base import Hit, Query
+from .sources.ms_ncourt_api import NcourtApiSource
 from .sources.registry import Registry
 from .store import RunResult, Store
 
@@ -44,13 +45,14 @@ def build_query(source: str, lookback_days: int) -> Query:
     return Query(sort="date_desc", date_from=od, date_to=do, date_field="judgment")
 
 
-def run_source(registry: Registry, store: Store, cfg: Config, source: str) -> RunResult:
+def _discover_ids_html(registry: Registry, cfg: Config, source: str,
+                       result: RunResult) -> list[str]:
+    """Odkrywanie nowości przez scrapowanie stron wyników - używane dla NSA i KIO,
+    które (w przeciwieństwie do sądów powszechnych) nie mają publicznego API do
+    masowego wylistowania identyfikatorów."""
     src_cfg = cfg.sources()[source]
-    result = RunResult(source=source)
-    started = datetime.now(timezone.utc).isoformat(timespec="seconds")
     query = build_query(source, cfg.poll.lookback_days)
     collected: list[Hit] = []
-
     try:
         for page in range(1, max(1, src_cfg.poll_pages) + 1):
             hits, _total = registry.sources[source].search(query, page)  # type: ignore[attr-defined]
@@ -68,32 +70,71 @@ def run_source(registry: Registry, store: Store, cfg: Config, source: str) -> Ru
         result.status = "blad"
         result.detail = f"nieoczekiwany błąd: {exc}"
         log.exception("[%s] przebieg przerwany", source)
+    return [h.doc_id for h in collected]
 
-    collected = collected[: cfg.poll.max_new_per_run]
-    result.seen = len(collected)
+
+def _discover_ids_ms(registry: Registry, store: Store, cfg: Config,
+                     result: RunResult) -> list[str]:
+    """Odkrywanie nowości dla sądów powszechnych przez oficjalne REST/XML API
+    (`ncourt-api`, patrz `sources/ms_ncourt_api.py`) zamiast scrapowania stron
+    wyników - bez ryzyka CAPTCHA, do 1000+ pozycji na żądanie. Punktem odcięcia
+    jest najświeższa data publikacji, jaką już mamy - a nie stały okres wstecz."""
+    since = store.max_publication_date("ms") or _window(cfg.poll.lookback_days)[0]
+    try:
+        ids = NcourtApiSource(registry.http).list_new_ids(since)
+    except (RateLimited, SourceUnavailable) as exc:
+        result.status = "blad"
+        result.detail = str(exc)
+        log.warning("[ms] przebieg przerwany (ncourt-api): %s", exc)
+        return []
+    except Exception as exc:                                   # nieoczekiwane
+        result.status = "blad"
+        result.detail = f"nieoczekiwany błąd (ncourt-api): {exc}"
+        log.exception("[ms] przebieg przerwany (ncourt-api)")
+        return []
+    result.pages = 1                                            # jedno wywołanie ncourt-api
+    return ids
+
+
+def run_source(registry: Registry, store: Store, cfg: Config, source: str) -> RunResult:
+    result = RunResult(source=source)
+    started = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    if source == "ms":
+        doc_ids = _discover_ids_ms(registry, store, cfg, result)
+    else:
+        doc_ids = _discover_ids_html(registry, cfg, source, result)
+
+    doc_ids = doc_ids[: cfg.poll.max_new_per_run]
+    result.seen = len(doc_ids)
 
     # Dociągamy pełną treść tylko dla pozycji, których jeszcze nie ma w bazie -
     # `document()` to osobne zapytanie (albo dwa) do portalu źródłowego, więc nie
     # ma sensu robić tego dla czegoś, co już mamy.
-    known = store.known_ids(source, (h.doc_id for h in collected))
-    new_ids = list(dict.fromkeys(h.doc_id for h in collected if h.doc_id not in known))
+    known = store.known_ids(source, doc_ids)
+    new_ids = list(dict.fromkeys(i for i in doc_ids if i not in known))
 
-    docs: list[dict] = []
+    # Zapisujemy każdy dokument od razu po pobraniu, nie dopiero na końcu
+    # przebiegu. Pobranie treści z portalu potrafi zająć długie minuty (setki
+    # dokumentów, limiter tempa) - trzymanie ich w pamięci do jednego zbiorczego
+    # zapisu na końcu oznacza, że awaria połączenia z bazą (Neon zamyka długo
+    # bezczynne połączenia) albo błąd w środku przebiegu kasuje całą dotychczasową
+    # pracę. Częstszy, mniejszy zapis dodatkowo trzyma połączenie "żywe".
     for doc_id in new_ids:
         try:
-            docs.append(registry.document(source, doc_id))
+            doc = registry.document(source, doc_id)
         except (RateLimited, SourceUnavailable) as exc:
             log.warning("[%s] pominięto %s: %s", source, doc_id, exc)
+            continue
         except Exception:
             log.exception("[%s] pominięto %s (nieoczekiwany błąd)", source, doc_id)
-
-    if docs:
+            continue
         try:
-            result.added = store.upsert_documents(docs)
+            result.added += store.upsert_documents([doc])
         except Exception as exc:
             result.status = "blad"
-            result.detail = f"zapis do bazy: {exc}"
-            log.exception("[%s] zapis nie powiódł się", source)
+            result.detail = f"zapis do bazy ({doc_id}): {exc}"
+            log.exception("[%s] zapis %s nie powiódł się", source, doc_id)
 
     store.record_run(result, started)
     log.info("[%s] obejrzano %s, nowych %s (%s)",

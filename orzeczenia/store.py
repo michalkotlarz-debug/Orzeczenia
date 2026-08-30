@@ -247,14 +247,42 @@ class Store:
 
     def _run(self, sql: str, params: Sequence[Any] = (), *, many: bool = False):
         with self._lock:
-            cur = self._conn.cursor()
-            if many:
-                cur.executemany(self._sql(sql), params)
-            else:
-                cur.execute(self._sql(sql), tuple(params))
-            if not self.is_pg:
-                self._conn.commit()
-            return cur
+            try:
+                return self._run_once(sql, params, many)
+            except Exception as exc:
+                if self.is_pg and self._looks_like_dead_connection(exc):
+                    # Neon (i inne managed Postgresy) zamykają długo bezczynne
+                    # połączenia - typowe przy przebiegu obserwatora, który
+                    # spędza długie minuty na pobieraniu treści z portali
+                    # między jednym zapisem a drugim. Odtwarzamy połączenie
+                    # zamiast tracić cały przebieg na ostatnim kroku.
+                    log.warning("połączenie z bazą padło, odtwarzam: %s", exc)
+                    self._reconnect()
+                    return self._run_once(sql, params, many)
+                raise
+
+    def _run_once(self, sql: str, params: Sequence[Any], many: bool):
+        cur = self._conn.cursor()
+        if many:
+            cur.executemany(self._sql(sql), params)
+        else:
+            cur.execute(self._sql(sql), tuple(params))
+        if not self.is_pg:
+            self._conn.commit()
+        return cur
+
+    def _reconnect(self) -> None:
+        try:
+            self._conn.close()
+        except Exception:
+            pass
+        self._conn = self._psycopg.connect(self._dsn, autocommit=True)
+
+    @staticmethod
+    def _looks_like_dead_connection(exc: Exception) -> bool:
+        msg = str(exc).lower()
+        return "connection" in msg and any(
+            w in msg for w in ("closed", "ssl", "terminat", "reset", "eof"))
 
     def _rows(self, sql: str, params: Sequence[Any] = ()) -> list[dict[str, Any]]:
         cur = self._run(sql, params)
@@ -452,6 +480,13 @@ class Store:
     def count(self) -> dict[str, int]:
         rows = self._rows("SELECT source, COUNT(*) AS n FROM orzeczenia GROUP BY source")
         return {r["source"]: r["n"] for r in rows}
+
+    def max_publication_date(self, source: str) -> str | None:
+        """Najświeższa data publikacji, jaką już mamy dla danego źródła - kursor
+        do przyrostowego importu ('daj mi wszystko od tego, co już znamy')."""
+        rows = self._rows(
+            "SELECT MAX(publication_date) AS m FROM orzeczenia WHERE source = ?", [source])
+        return rows[0]["m"] if rows else None
 
     def runs(self, limit: int = 20) -> list[dict[str, Any]]:
         return self._rows(

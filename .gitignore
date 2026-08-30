@@ -9,3 +9,4 @@ dane/
 
 .vercel
 .env*
+.claude/
