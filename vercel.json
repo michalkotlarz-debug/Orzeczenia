@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "app.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{tests/**,deploy/**,.github/**,dane/**,**/__pycache__/**,**/*.pyc}"
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/obserwator/uruchom",
+      "schedule": "0 5 * * *"
+    }
+  ]
+}
