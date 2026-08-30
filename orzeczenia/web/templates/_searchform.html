@@ -1,0 +1,63 @@
+{% from "_icons.html" import icon %}
+{% set Q = query %}
+{% set has_adv = Q and (Q.signature or Q.judge or Q.thematic or Q.legal_basis or Q.date_from or Q.date_to) %}
+<form class="searchform" action="/szukaj" method="get" autocomplete="off">
+  <div class="searchbar">
+    {{ icon('search', 'ic lead') }}
+    <input type="search" name="q" value="{{ q|default('') }}"
+           placeholder="Szukaj w treści orzeczeń — np. odszkodowanie, rażąco niska cena, zasiedzenie">
+    <button type="submit">Szukaj</button>
+  </div>
+
+  <button class="filters-toggle" type="button" data-filters-toggle aria-expanded="{{ 'true' if has_adv else 'false' }}">
+    {{ icon('sliders', 'ic') }} <span>Filtry</span>
+    {% if has_adv %}<span class="dot"></span>{% endif %}
+  </button>
+
+  <div class="filters" data-filters {% if not has_adv %}hidden{% endif %}>
+    <div class="fgrid">
+      <label>Sygnatura
+        <input type="text" name="signature" value="{{ Q.signature if Q else '' }}" placeholder="np. KIO 1919/16">
+      </label>
+      <label>Sędzia / arbiter <span class="only">tylko sądy powszechne</span>
+        <input type="text" name="judge" value="{{ Q.judge if Q else '' }}" placeholder="np. Kowalski">
+      </label>
+      <label>Hasło tematyczne <span class="only">tylko sądy powszechne</span>
+        <input type="text" name="thematic" value="{{ Q.thematic if Q else '' }}" placeholder="np. Zasiedzenie">
+      </label>
+      <label>Podstawa prawna <span class="only">tylko sądy powszechne</span>
+        <input type="text" name="legal_basis" value="{{ Q.legal_basis if Q else '' }}" placeholder="np. art. 410 k.c.">
+      </label>
+      <label>Sortowanie
+        <select name="sort">
+          {% for k, v in sort_labels.items() %}
+          <option value="{{ k }}" {% if (Q.sort if Q else 'relevance')==k %}selected{% endif %}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <div class="fdates">
+      <div class="dgroup">
+        <label class="which">Zakres dat — filtruj po
+          <select name="date_field">
+            {% for k, v in date_field_labels.items() %}
+            <option value="{{ k }}" {% if (Q.date_field if Q else 'judgment')==k %}selected{% endif %}>{{ v }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>od <input type="date" name="date_from" value="{{ Q.date_from if Q else '' }}"></label>
+        <label>do <input type="date" name="date_to" value="{{ Q.date_to if Q else '' }}"></label>
+      </div>
+    </div>
+    <p class="fhint">{{ icon('info', 'ic') }}
+      Kryteria trafiają wprost do wyszukiwarek portali źródłowych. Sędziego, hasła
+      tematycznego i podstawy prawnej szuka tylko Portal Orzeczeń — użycie ich
+      pomija KIO. Data publikacji jest dostępna wyłącznie dla sądów powszechnych.</p>
+
+    <div class="factions">
+      <button type="submit">Zastosuj filtry</button>
+      <a class="clear" href="/szukaj{% if q %}?q={{ q|urlencode }}{% endif %}">Wyczyść</a>
+    </div>
+  </div>
+</form>

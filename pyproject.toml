@@ -1,0 +1,11 @@
+[project]
+name = "orzecznik"
+version = "2.0.0"
+description = "Wyszukiwarka orzeczen sadow powszechnych i KIO - odpytuje portale zrodlowe na zywo, bez wlasnej bazy"
+requires-python = ">=3.11"
+
+[project.scripts]
+orzecznik = "orzeczenia.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["orzeczenia*"]

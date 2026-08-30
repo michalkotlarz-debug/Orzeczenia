@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ d.signature or 'Orzeczenie' }} — {{ site_name }}{% endblock %}
+{% block content %}
+<div class="wrap reading">
+  <a class="back" href="javascript:history.back()">{{ icon('arrow-left','ic') }} Wróć do wyników</a>
+
+  <article class="doc"
+           data-doc="{{ d.source }}:{{ d.doc_id }}"
+           data-sig="{{ d.signature or '' }}"
+           data-type="{{ d.doc_type or '' }}"
+           data-court="{{ d.court or '' }}"
+           data-date="{{ d.judgment_date or '' }}"
+           data-src="{{ d.source_label }}">
+    <header class="doc-head">
+      <div class="ident">
+        <span class="badge">{{ icon('gavel','ic') }} {{ (d.doc_type or 'orzeczenie')|upper }}</span>
+        <span class="src src-{{ d.source }}">{{ d.source_label }}</span>
+      </div>
+      <h1>{{ d.signature or '(bez sygnatury)' }}</h1>
+      <p class="doc-sub">{{ d.court or '—' }}{% if d.division %} · {{ d.division }}{% endif %}
+         · {{ d.judgment_date|datepl }}</p>
+      <div class="doc-tools">
+        <a class="ghost" href="/orzeczenie/{{ d.source }}/{{ d.doc_id }}/pobierz.txt">{{ icon('download','ic') }} Pobierz tekst</a>
+        <button class="ghost fav" type="button" data-fav aria-pressed="false">{{ icon('heart','ic') }} <span class="lbl">Do ulubionych</span></button>
+        <a class="ghost" href="{{ d.source_url }}" target="_blank" rel="noopener">{{ icon('external','ic') }} Oryginał w portalu</a>
+        {% if d.get('pdf_url') %}<a class="ghost" href="{{ d.get('pdf_url') }}" target="_blank" rel="noopener">{{ icon('download','ic') }} PDF ze źródła</a>{% endif %}
+      </div>
+    </header>
+
+    <dl class="metryka">
+      <div><dt>{{ icon('calendar','ic') }} Data orzeczenia</dt><dd>{{ d.judgment_date|datepl }}</dd></div>
+      {% if d.publication_date %}<div><dt>{{ icon('calendar','ic') }} Data publikacji</dt><dd>{{ d.publication_date|datepl }}</dd></div>{% endif %}
+      {% if d.valid_from_date %}<div><dt>{{ icon('calendar','ic') }} Uprawomocnienie</dt><dd>{{ d.valid_from_date|datepl }}</dd></div>{% endif %}
+      <div><dt>{{ icon('court','ic') }} Sąd / organ</dt><dd>{{ d.court or '—' }}{% if d.division %} — {{ d.division }}{% endif %}</dd></div>
+      {% if d.judges %}
+      <div class="wide"><dt>{{ icon('pen','ic') }} Skład orzekający</dt><dd>
+        {% for j in d.judges %}{{ j.name }}<span class="role">{{ j.role }}</span>{% if not loop.last %}, {% endif %}{% endfor %}
+      </dd></div>
+      {% endif %}
+      {% if d.outcome %}<div><dt>{{ icon('check','ic') }} Rozstrzygnięcie</dt><dd>{{ d.outcome }}</dd></div>{% endif %}
+      {% if d.purchaser %}<div><dt>{{ icon('court','ic') }} Zamawiający</dt><dd>{{ d.purchaser }}</dd></div>{% endif %}
+      {% if d.get('procedure') %}<div><dt>{{ icon('info','ic') }} Tryb postępowania</dt><dd>{{ d.get('procedure') }}</dd></div>{% endif %}
+      {% if d.thematic %}<div class="wide"><dt>{{ icon('tag','ic') }} Hasła tematyczne</dt><dd>
+        {% for t in d.thematic %}<span class="chip">{{ t }}</span>{% endfor %}</dd></div>{% endif %}
+      {% if d.legal_basis %}<div class="wide"><dt>{{ icon('info','ic') }} Podstawa prawna</dt><dd>{{ d.legal_basis }}</dd></div>{% endif %}
+    </dl>
+
+    {% if d.sentencja %}
+    <section class="block"><h2>Sentencja</h2>
+      <div class="text">{% for para in d.sentencja.split("\n") %}<p>{{ para }}</p>{% endfor %}</div>
+    </section>
+    {% endif %}
+    {% if d.uzasadnienie %}
+    <section class="block"><h2>Uzasadnienie</h2>
+      <div class="text">{% for para in d.uzasadnienie.split("\n") %}<p>{{ para }}</p>{% endfor %}</div>
+    </section>
+    {% endif %}
+    {% if not d.sentencja and not d.uzasadnienie %}
+    <section class="block"><h2>Treść</h2>
+      <div class="text">{% for para in (d.full_text or '').split("\n") %}<p>{{ para }}</p>{% endfor %}</div>
+    </section>
+    {% endif %}
+  </article>
+</div>
+{% endblock %}

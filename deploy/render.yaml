@@ -1,0 +1,18 @@
+# Wdrożenie na Render (render.com) - darmowy plan wystarczy.
+# 1. Wrzuć projekt na GitHub.
+# 2. Render -> New -> Blueprint -> wskaż repozytorium.
+# Po chwili dostaniesz publiczny adres https://<nazwa>.onrender.com
+services:
+  - type: web
+    name: orzecznik
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn orzeczenia.web.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12"
+      - key: ORZECZNIK_USER_AGENT
+        value: "Orzecznik/2.0 (kontakt: michal.kotlarz@gmail.com)"

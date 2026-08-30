@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ tytul }} — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="wrap narrow center pad">
+  <h1>{{ tytul }}</h1>
+  <p class="muted">{{ opis }}</p>
+  <p class="muted small">Serwis pobiera orzeczenia na żywo z portali źródłowych, więc
+     czasem odpowiadają one wolniej albo chwilowo ograniczają ruch.</p>
+  <p><a class="ghost" href="javascript:history.back()">{{ icon('arrow-left','ic') }} Wróć</a>
+     <a class="ghost" href="/szukaj">Nowe wyszukiwanie</a></p>
+</section>
+{% endblock %}

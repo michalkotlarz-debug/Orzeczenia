@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Ulubione — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="wrap">
+  <h1>Ulubione</h1>
+  <p class="muted">Zapisane w tej przeglądarce. Trzymamy tylko sygnaturę i podstawowe
+     dane — pełna treść jest pobierana ze źródła po kliknięciu.</p>
+  <div class="cards" data-fav-list></div>
+</section>
+{% endblock %}

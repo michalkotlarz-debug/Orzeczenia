@@ -1,0 +1,39 @@
+{% from "_icons.html" import icon %}
+{# Karta wyniku. `h` to obiekt Hit - dane dokładnie takie, jak podał serwis źródłowy. #}
+{% macro result_card(h, query=None, q='') %}
+<article class="card"
+         data-doc="{{ h.source }}:{{ h.doc_id }}"
+         data-sig="{{ h.signature or '' }}"
+         data-type="{{ h.doc_type or '' }}"
+         data-court="{{ h.court or '' }}"
+         data-date="{{ h.judgment_date or '' }}"
+         data-src="{{ source_label.get(h.source, h.source) }}">
+  <div class="card-top">
+    <div class="ident">
+      <span class="badge">{{ icon('gavel', 'ic') }} {{ (h.doc_type or 'orzeczenie')|upper }}</span>
+      <a class="sig" href="{{ h.url }}{% if q %}?q={{ q|urlencode }}{% endif %}">{{ h.signature or '(bez sygnatury)' }}</a>
+      <span class="src src-{{ h.source }}">{{ source_label.get(h.source, h.source) }}</span>
+    </div>
+    <div class="tools">
+      <a class="tool" href="{{ h.url }}/pobierz.txt" title="Pobierz treść">{{ icon('download', 'ic') }}</a>
+      <button class="tool fav" type="button" data-fav title="Dodaj do ulubionych" aria-pressed="false">{{ icon('heart', 'ic') }}</button>
+    </div>
+  </div>
+
+  <a class="card-link" href="{{ h.url }}{% if q %}?q={{ q|urlencode }}{% endif %}">
+    <div class="meta">
+      <span>{{ icon('court', 'ic') }}{{ h.court or '—' }}{% if h.division %} · {{ h.division }}{% endif %}</span>
+      <span{% if query and query.date_field == 'judgment' and (query.date_from or query.date_to) %} class="hl"{% endif %}>
+        {{ icon('calendar', 'ic') }}{{ h.judgment_date|datepl }}</span>
+      {% if h.panel %}<span>{{ icon('pen', 'ic') }}{{ h.panel|join(' · ') }}</span>{% endif %}
+      {% if h.thematic %}<span>{{ icon('tag', 'ic') }}{{ h.thematic|join(' · ') }}</span>{% endif %}
+    </div>
+    {% if h.excerpt %}<p class="snippet">{{ h.excerpt }}</p>{% endif %}
+    {% if h.publication_date %}
+    <div class="subdates">
+      <span{% if query and query.date_field == 'publication' and (query.date_from or query.date_to) %} class="hl"{% endif %}>opublikowano {{ h.publication_date|datepl }}</span>
+    </div>
+    {% endif %}
+  </a>
+</article>
+{% endmacro %}

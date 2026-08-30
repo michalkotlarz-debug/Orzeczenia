@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_card.html" import result_card %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ q or 'Wyniki' }} — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="searchband">
+  <div class="wrap narrow">{% include "_searchform.html" %}</div>
+</section>
+
+<section class="wrap">
+  <nav class="tabs">
+    {% for key, label in [('', 'Wszystkie')] + source_label.items()|list %}
+    <a class="tab {% if source == key %}on{% endif %}" href="/szukaj?{{ params|urlencode_extra('source', key) }}">
+      {{ label }}{% if key and res.totals.get(key) is not none %} <span>{{ res.totals[key] }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </nav>
+
+  {% for key, msg in res.errors.items() %}
+  <p class="warn">{{ icon('info', 'ic') }}
+     <b>{{ source_label.get(key, key) }}</b> — {{ msg }} Pokazujemy wyniki z pozostałych źródeł.</p>
+  {% endfor %}
+
+  <div class="resultsbar">
+    <p>Znaleziono <b>{{ "{:,}".format(res.total).replace(",", " ") }}</b>
+       {{ plural_pl(res.total, 'orzeczenie', 'orzeczenia', 'orzeczeń') }}
+       {% if res.totals|length > 1 %}
+       <span class="muted">·
+         {% for k, n in res.totals.items() %}{{ source_label.get(k, k) }}: {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}
+       </span>
+       {% endif %}
+    </p>
+    {% if res.hits %}<a class="ghost" href="/eksport.csv?{{ request.url.query }}">{{ icon('download', 'ic') }} Pobierz listę (CSV)</a>{% endif %}
+  </div>
+
+  <div class="cards">
+    {% for h in res.hits %}{{ result_card(h, query, q) }}{% else %}
+    <div class="empty">
+      <p><b>Brak wyników</b></p>
+      <p>Spróbuj innych słów, krótszego rdzenia wyrazu albo usuń część filtrów.</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if res.hits %}
+  <nav class="pager">
+    {% if page > 1 %}<a href="/szukaj?{{ params|urlencode_page(page-1) }}">{{ icon('arrow-left','ic') }} Poprzednia</a>{% else %}<span></span>{% endif %}
+    <span class="pos">strona {{ page }}</span>
+    <a href="/szukaj?{{ params|urlencode_page(page+1) }}">Następna {{ icon('arrow-right','ic') }}</a>
+  </nav>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "_card.html" import result_card %}
+{% block content %}
+<section class="hero">
+  <div class="wrap narrow">
+    <h1>Orzeczenia sądowe,<br>na wyciągnięcie ręki.</h1>
+    <p class="lede">Jedno pole wyszukiwania do Portalu Orzeczeń Sądów Powszechnych
+       i bazy orzeczeń Krajowej Izby Odwoławczej. Treści pobieramy z tych serwisów
+       na bieżąco i pokazujemy w całości — razem z sentencją i uzasadnieniem.</p>
+    {% with q='', query=None %}{% include "_searchform.html" %}{% endwith %}
+  </div>
+</section>
+
+<section class="wrap">
+  <div class="section-head">
+    <h2>Ostatnio opublikowane</h2>
+    <a class="more" href="/szukaj?sort=pub_desc">Zobacz więcej</a>
+  </div>
+  {% if latest and latest.hits %}
+  <div class="cards">{% for h in latest.hits %}{{ result_card(h) }}{% endfor %}</div>
+  {% else %}
+  <div class="empty">
+    <p><b>Serwisy źródłowe chwilowo nie odpowiadają</b></p>
+    <p>Wyszukiwanie może nadal działać — spróbuj wpisać frazę powyżej.</p>
+  </div>
+  {% endif %}
+</section>
+
+<section class="wrap">
+  <h2>Jak to działa</h2>
+  <div class="tips">
+    <div><b>Bez własnej bazy</b><span>Każde wyszukanie idzie na żywo do portali źródłowych. Widzisz to, co jest tam w tej chwili.</span></div>
+    <div><b>Pełna treść</b><span>Po kliknięciu sygnatury otwiera się całe orzeczenie — sentencja i uzasadnienie, z metryką.</span></div>
+    <div><b>Dwa źródła naraz</b><span>Sądy powszechne i KIO w jednej liście wyników, z zachowaniem opisów z obu portali.</span></div>
+  </div>
+</section>
+{% endblock %}

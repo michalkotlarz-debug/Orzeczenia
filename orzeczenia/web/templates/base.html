@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ site_name }}{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>⚖️</text></svg>">
+</head>
+<body>
+{% from "_icons.html" import icon %}
+<header class="topbar">
+  <div class="wrap bar">
+    <a class="brand" href="/">
+      <span class="mark">{{ icon('scales', 'ic') }}</span>
+      <span class="name">{{ site_name }}</span>
+    </a>
+    <nav>
+      <a href="/szukaj">Wyszukiwarka</a>
+      <a class="fav-link" href="/ulubione">{{ icon('heart', 'ic') }} Ulubione
+        <span class="count" data-fav-count hidden>0</span></a>
+    </nav>
+  </div>
+</header>
+
+<main>{% block content %}{% endblock %}</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <p>Treści orzeczeń pochodzą z
+       <a href="https://orzeczenia.ms.gov.pl" target="_blank" rel="noopener">Portalu Orzeczeń Sądów Powszechnych</a>
+       i <a href="https://orzeczenia.uzp.gov.pl" target="_blank" rel="noopener">bazy orzeczeń KIO</a>
+       i są pobierane na bieżąco przy każdym wyszukaniu — ten serwis niczego nie archiwizuje.
+       Serwis nieoficjalny; źródłem prawa pozostaje treść oryginalna.</p>
+  </div>
+</footer>
+
+<script src="/static/app.js" defer></script>
+</body>
+</html>

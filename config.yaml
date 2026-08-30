@@ -1,0 +1,46 @@
+# ------------------------------------------------------------------
+# Orzecznik - nakładka na publiczne portale orzecznictwa.
+# Aplikacja NIE ma własnej bazy: każde wyszukanie idzie na żywo do
+# serwisów źródłowych, a wynik jest tylko przenoszony na tę stronę.
+# ------------------------------------------------------------------
+
+http:
+  # Minimalny odstęp między zapytaniami do JEDNEGO hosta (sekundy).
+  # Portal orzeczenia.ms.gov.pl przy ~0,7 s pokazuje CAPTCHA, więc trzymamy zapas.
+  delay_seconds: 1.2
+  jitter_pct: 0.25
+  # Ile czekamy na odpowiedź serwisu, zanim pokażemy wyniki bez niego
+  timeout_seconds: 20
+  max_retries: 2
+  backoff_base_seconds: 3.0
+  cooldown_seconds: 60
+  user_agent: >-
+    Orzecznik/2.0 (nakładka na publiczne portale orzecznictwa;
+    kontakt: michal.kotlarz@gmail.com)
+  respect_robots: true
+
+cache:
+  # Pamięć podręczna trzymana TYLKO w pamięci procesu - znika po restarcie.
+  # Chroni portale przed powtarzaniem tego samego zapytania.
+  listing_ttl_seconds: 600      # listy wyników: 10 minut
+  document_ttl_seconds: 21600   # treści orzeczeń: 6 godzin
+  max_entries: 500
+
+sources:
+  ms:
+    enabled: true
+    label: "Sądy powszechne"
+    base_url: "https://orzeczenia.ms.gov.pl"
+  kio:
+    enabled: true
+    label: "KIO"
+    base_url: "https://orzeczenia.uzp.gov.pl"
+
+web:
+  host: "127.0.0.1"
+  port: 8000
+  site_name: "Orzecznik"
+  # Skąd wolno wołać /api/* z przeglądarki. Pusta lista = tylko ten sam adres.
+  # Przy wdrożeniu w chmurze wpisz tu adres swojego frontendu, np.:
+  #   - "https://orzecznik.example.com"
+  cors_origins: []
