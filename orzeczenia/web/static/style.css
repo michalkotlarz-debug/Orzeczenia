@@ -54,6 +54,9 @@ button{font:inherit;cursor:pointer}
 .fav-link .count{min-width:20px;height:20px;padding:0 6px;border-radius:20px;
   background:var(--navy-soft);color:var(--navy);font-size:11.5px;font-weight:700;
   display:grid;place-items:center}
+.doc-counter{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;
+  font-size:14px;color:var(--muted)}
+.doc-counter b{color:var(--ink);font-weight:700}
 
 /* ---------------- hero ---------------- */
 .hero{background:var(--band);border-bottom:1px solid var(--line);padding:72px 0 56px;text-align:center}
