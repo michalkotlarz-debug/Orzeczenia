@@ -188,10 +188,12 @@ def import_ms_batch(cfg: Config, registry: Registry | None = None, store: Store 
     started = datetime.now(timezone.utc).isoformat(timespec="seconds")
     try:
         since = since or (EARLIEST_DATE if full else _window(90)[0])
-        # Przy pełnym archiwum strona 1000 pozycji oznacza ok. 465 zapytań tylko
-        # do wylistowania id (przy limiterze 1,2s to ~9 minut) - API wspiera do
-        # 5000/stronę (patrz SAOS), więc dla `full` bierzemy maksymalny rozmiar.
-        list_kwargs = {"max_ids": None, "limit": 5000} if full else {}
+        # Przy pełnym archiwum strona 1000 pozycji oznacza setki zapytań tylko
+        # do wylistowania id. Kod SAOS deklaruje limit do 5000/stronę, ale to
+        # był ich WŁASNY, klientowy bezpiecznik - sprawdzone empirycznie na
+        # żywym API: 3000 i więcej to 404, 2000 działa. Bierzemy zweryfikowaną
+        # wartość, nie deklarowaną w cudzym kodzie.
+        list_kwargs = {"max_ids": None, "limit": 2000} if full else {}
         try:
             ids = NcourtApiSource(registry.http).list_new_ids(since, **list_kwargs)
         except (RateLimited, SourceUnavailable) as exc:
