@@ -57,9 +57,17 @@
     </section>
     {% endif %}
     {% if not d.sentencja and not d.uzasadnienie %}
+    {% if d.full_text %}
     <section class="block"><h2>Treść</h2>
-      <div class="text">{% for para in (d.full_text or '').split("\n") %}<p>{{ para }}</p>{% endfor %}</div>
+      <div class="text">{% for para in d.full_text.split("\n") %}<p>{{ para }}</p>{% endfor %}</div>
     </section>
+    {% else %}
+    <section class="block">
+      <p class="muted">Treść tego orzeczenia nie jest dostępna w portalu źródłowym — dostępna jest
+         tylko metryka widoczna powyżej. Zobacz
+         <a href="{{ d.source_url }}" target="_blank" rel="noopener">oryginał w portalu</a>.</p>
+    </section>
+    {% endif %}
     {% endif %}
   </article>
 </div>
