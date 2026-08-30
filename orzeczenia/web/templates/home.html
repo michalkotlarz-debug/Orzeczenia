@@ -4,18 +4,12 @@
 <section class="hero">
   <div class="wrap narrow">
     <h1>Orzeczenia sądowe,<br>na wyciągnięcie ręki.</h1>
-    <p class="lede">Jedno pole wyszukiwania do Portalu Orzeczeń Sądów Powszechnych,
-       Centralnej Bazy Orzeczeń Sądów Administracyjnych i bazy orzeczeń KIO —
+    <p class="lede">Wyszukiwarka obejmująca Portal Orzeczeń Sądów Powszechnych,
+       Centralną Bazę Orzeczeń Sądów Administracyjnych i bazę orzeczeń KIO —
        razem z sentencją i uzasadnieniem.</p>
     {% if baza_razem|default(0) %}
-    <p class="lede-stat">
-      <b>{{ "{:,}".format(baza_razem).replace(",", " ") }}</b>
-      {{ plural_pl(baza_razem, 'orzeczenie', 'orzeczenia', 'orzeczeń') }} już w naszej bazie
-      {% if baza|default({})|length > 1 %}<span class="muted">({% for k, n in baza.items() %}{{ source_label.get(k, k) }}: {{ n }}{% if not loop.last %} · {% endif %}{% endfor %})</span>{% endif %}
-      — i rośnie każdego dnia.
-    </p>
+    <p class="lede-stat"><b>{{ "{:,}".format(baza_razem).replace(",", " ") }}</b></p>
     {% endif %}
-    {% with q='', query=None %}{% include "_searchform.html" %}{% endwith %}
   </div>
 </section>
 
@@ -29,7 +23,7 @@
   {% else %}
   <div class="empty">
     <p><b>Serwisy źródłowe chwilowo nie odpowiadają</b></p>
-    <p>Wyszukiwanie może nadal działać — spróbuj wpisać frazę powyżej.</p>
+    <p>Wyszukiwanie może nadal działać — spróbuj przez <a href="/szukaj">wyszukiwarkę</a>.</p>
   </div>
   {% endif %}
 </section>
