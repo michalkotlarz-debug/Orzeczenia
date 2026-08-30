@@ -142,7 +142,10 @@ def home(request: Request):
         latest = registry.latest(limit=8)
     except Exception:
         latest = None
-    return templates.TemplateResponse(request, "home.html", {"latest": latest})
+    store = get_store()
+    baza = store.count() if store else {}
+    return templates.TemplateResponse(request, "home.html", {
+        "latest": latest, "baza": baza, "baza_razem": sum(baza.values())})
 
 
 @app.get("/szukaj", response_class=HTMLResponse)
