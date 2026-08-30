@@ -1,9 +1,10 @@
-"""Baza NOWYCH orzeczeń zebranych przez obserwatora.
+"""Własna baza orzeczeń zbieranych przez obserwatora.
 
-To nie jest kopia archiwum portali. Wyszukiwanie w aplikacji nadal idzie
-na żywo do serwisów źródłowych - tutaj lądują wyłącznie pozycje, które
-obserwator zobaczył po raz pierwszy, żeby dało się odpowiedzieć na pytanie
-"co się pojawiło od wczoraj" bez odpytywania portali przy każdym wejściu.
+Obserwator dociąga pełną treść (`upsert_documents`) każdego nowego orzeczenia,
+które zobaczył - dzięki temu wyszukiwarka może czytać z tej bazy zamiast za
+każdym razem pytać portal źródłowy na żywo (`search_fulltext`, `get_document`).
+Warstwa web i tak trzyma żywy fallback (`registry.search()`/`registry.document()`)
+na wypadek, gdy czegoś jeszcze nie zdążyliśmy zaimportować.
 
 Dwa warianty składowania, jeden interfejs:
   * SQLite  - domyślnie, plik na dysku (lokalnie, Railway z wolumenem, VPS),
@@ -25,6 +26,7 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 from urllib.parse import urlparse
 
+from .parse.common import squash
 from .sources.base import Hit
 
 log = logging.getLogger("orzecznik.store")
@@ -40,14 +42,21 @@ CREATE TABLE IF NOT EXISTS orzeczenia (
     doc_id         TEXT NOT NULL,
     signature      TEXT,
     doc_type       TEXT,
+    doc_type_raw   TEXT,
     court          TEXT,
     division       TEXT,
     judgment_date  TEXT,                   -- RRRR-MM-DD
     publication_date TEXT,
     outcome        TEXT,
     excerpt        TEXT,
-    panel          TEXT NOT NULL DEFAULT '[]',   -- JSON
+    panel          TEXT NOT NULL DEFAULT '[]',   -- JSON, lista nazwisk
     thematic       TEXT NOT NULL DEFAULT '[]',   -- JSON
+    chairman       TEXT,
+    legal_basis    TEXT,
+    importance     TEXT,
+    sentencja      TEXT,
+    uzasadnienie   TEXT,
+    full_text      TEXT,
     source_url     TEXT NOT NULL,
     first_seen_at  TEXT NOT NULL,          -- kiedy TA aplikacja to zobaczyła
     last_seen_at   TEXT NOT NULL,
@@ -78,6 +87,29 @@ COLUMNS = ("source", "doc_id", "signature", "doc_type", "court", "division",
            "judgment_date", "publication_date", "outcome", "excerpt", "panel",
            "thematic", "source_url", "first_seen_at", "last_seen_at")
 
+# Kolumny dopisane po pierwszej wersji schematu - potrzebne do zapisu pełnej
+# treści dokumentu (upsert_documents). Istniejące bazy dostają je przez
+# migrację w Store._migrate(), bo `CREATE TABLE IF NOT EXISTS` nic im nie doda.
+_MIGRATION_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("doc_type_raw", "TEXT"),
+    ("chairman", "TEXT"),
+    ("legal_basis", "TEXT"),
+    ("importance", "TEXT"),
+    ("sentencja", "TEXT"),
+    ("uzasadnienie", "TEXT"),
+    ("full_text", "TEXT"),
+    ("judges", "TEXT"),      # JSON [{"name":...,"role":...}] - pełny skład z rolami
+    ("purchaser", "TEXT"),   # KIO: zamawiający
+)
+
+# Pola pełnego dokumentu (patrz orzeczenia/sources/*.document()) zapisywane
+# przez upsert_documents - nadpisuje to, co ewentualnie już wpisał lekki upsert().
+DOC_COLUMNS = ("source", "doc_id", "signature", "doc_type", "doc_type_raw", "court",
+               "division", "judgment_date", "publication_date", "outcome", "purchaser",
+               "excerpt", "panel", "thematic", "chairman", "legal_basis", "importance",
+               "sentencja", "uzasadnienie", "full_text", "judges", "source_url",
+               "first_seen_at", "last_seen_at")
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -92,6 +124,34 @@ def _as_iso_date(value: Any) -> str | None:
         except ValueError:
             return None
     return None
+
+
+def _doc_row(d: dict[str, Any]) -> tuple:
+    """Wartości pełnego dokumentu w kolejności `DOC_COLUMNS[:-2]` (bez
+    first_seen_at/last_seen_at - te dopisuje wywołujący)."""
+    excerpt = d.get("excerpt") or squash((d.get("sentencja") or d.get("full_text") or "")[:400]) or None
+    judges = d.get("judges") or []
+    names = [j.get("name") for j in judges if j.get("name")]
+    return (
+        d.get("source"), d.get("doc_id"), d.get("signature"), d.get("doc_type"),
+        d.get("doc_type_raw"), d.get("court"), d.get("division"),
+        _as_iso_date(d.get("judgment_date")), _as_iso_date(d.get("publication_date")),
+        d.get("outcome"), d.get("purchaser"), excerpt,
+        json.dumps(names, ensure_ascii=False),
+        json.dumps(d.get("thematic") or [], ensure_ascii=False),
+        d.get("chairman"), d.get("legal_basis"), d.get("importance"),
+        d.get("sentencja"), d.get("uzasadnienie"), d.get("full_text"),
+        json.dumps(judges, ensure_ascii=False),
+        d.get("source_url") or "",
+    )
+
+
+def _search_text(d: dict[str, Any]) -> str:
+    """Tekst, z którego Postgres buduje `search_vector` (polska konfiguracja FTS)."""
+    parts = [d.get("signature"), d.get("court"), d.get("division"), d.get("chairman"),
+             d.get("legal_basis"), " ".join(d.get("thematic") or []),
+             d.get("sentencja"), d.get("uzasadnienie"), d.get("full_text")]
+    return " ".join(p for p in parts if p)
 
 
 @dataclass
@@ -124,6 +184,7 @@ class Store:
             self._dsn = url.replace("postgresql+psycopg://", "postgresql://")
             self._conn = self._psycopg.connect(self._dsn, autocommit=True)
             self._exec_script(SCHEMA_PG)
+            self._migrate()
         else:
             path = url[len("sqlite:///"):] if url.startswith("sqlite:///") else url
             p = Path(path)
@@ -134,6 +195,36 @@ class Store:
             self._conn.row_factory = sqlite3.Row
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._exec_script(SCHEMA_SQLITE)
+            self._migrate()
+
+    # ------------------------------------------------------------------
+    def _migrate(self) -> None:
+        """Dodaje kolumny/indeksy, których nie ma jeszcze baza założona przed
+        wprowadzeniem pełnych dokumentów. `CREATE TABLE IF NOT EXISTS` tego nie
+        robi na już istniejącej tabeli."""
+        with self._lock:
+            if self.is_pg:
+                with self._conn.cursor() as cur:
+                    for col, sqltype in _MIGRATION_COLUMNS:
+                        cur.execute(f"ALTER TABLE orzeczenia ADD COLUMN IF NOT EXISTS "
+                                    f"{col} {sqltype}")
+                    # PostgreSQL nie ma wbudowanej konfiguracji 'polish' (Snowball nie
+                    # zna polskiego). Bez prawdziwej odmiany słów zostaje nam 'simple'
+                    # (tokenizacja + małe litery) + unaccent (ą/ę/ł... jak a/e/l) - gorzej
+                    # niż SAOS-owy Lucene+morfologik, ale wciąż realne pełnotekstowe
+                    # wyszukiwanie z rankingiem, zamiast samego LIKE.
+                    cur.execute("CREATE EXTENSION IF NOT EXISTS unaccent")
+                    cur.execute("ALTER TABLE orzeczenia ADD COLUMN IF NOT EXISTS "
+                                "search_vector tsvector")
+                    cur.execute("CREATE INDEX IF NOT EXISTS ix_orz_search "
+                                "ON orzeczenia USING GIN (search_vector)")
+            else:
+                existing = {row[1] for row in
+                            self._conn.execute("PRAGMA table_info(orzeczenia)").fetchall()}
+                for col, sqltype in _MIGRATION_COLUMNS:
+                    if col not in existing:
+                        self._conn.execute(f"ALTER TABLE orzeczenia ADD COLUMN {col} {sqltype}")
+                self._conn.commit()
 
     # ------------------------------------------------------------------
     def close(self) -> None:
@@ -220,6 +311,130 @@ class Store:
                     [now, source, *known])
         return added
 
+    def upsert_documents(self, docs: list[dict[str, Any]]) -> int:
+        """Zapisuje pełne dokumenty (wynik `Source.document()`). W przeciwieństwie
+        do `upsert()` nadpisuje też treść już znanych pozycji - re-import może
+        poprawić dane, nie tylko odświeżyć `last_seen_at`. Zwraca liczbę NOWYCH."""
+        if not docs:
+            return 0
+        now = _now()
+        added = 0
+        value_cols = DOC_COLUMNS[:-2]              # bez first_seen_at/last_seen_at
+        set_cols = value_cols[2:]                  # bez source/doc_id (są w WHERE)
+        by_source: dict[str, list[dict[str, Any]]] = {}
+        for d in docs:
+            if d.get("source") and d.get("doc_id"):
+                by_source.setdefault(d["source"], []).append(d)
+
+        for source, group in by_source.items():
+            known = self.known_ids(source, (d["doc_id"] for d in group))
+            fresh: list[tuple] = []
+            updates: list[tuple] = []
+            seen_now: set[str] = set()
+            for d in group:
+                doc_id = d["doc_id"]
+                if doc_id in seen_now:
+                    continue
+                seen_now.add(doc_id)
+                row = _doc_row(d)
+                text = _search_text(d)
+                if doc_id in known:
+                    tail = (text, now, source, doc_id) if self.is_pg else (now, source, doc_id)
+                    updates.append((*row[2:], *tail))
+                else:
+                    tail = (text, now, now) if self.is_pg else (now, now)
+                    fresh.append((*row, *tail))
+
+            if fresh:
+                cols = ", ".join(value_cols)
+                holes = ", ".join("?" for _ in value_cols)
+                if self.is_pg:
+                    sql = (f"INSERT INTO orzeczenia ({cols}, search_vector, "
+                           f"first_seen_at, last_seen_at) "
+                           f"VALUES ({holes}, to_tsvector('simple', unaccent(?)), ?, ?)")
+                else:
+                    sql = (f"INSERT INTO orzeczenia ({cols}, first_seen_at, last_seen_at) "
+                           f"VALUES ({holes}, ?, ?)")
+                self._run(sql, fresh, many=True)
+                added += len(fresh)
+
+            if updates:
+                assign = ", ".join(f"{c} = ?" for c in set_cols)
+                if self.is_pg:
+                    sql = (f"UPDATE orzeczenia SET {assign}, "
+                           f"search_vector = to_tsvector('simple', unaccent(?)), "
+                           f"last_seen_at = ? WHERE source = ? AND doc_id = ?")
+                else:
+                    sql = (f"UPDATE orzeczenia SET {assign}, last_seen_at = ? "
+                           f"WHERE source = ? AND doc_id = ?")
+                self._run(sql, updates, many=True)
+        return added
+
+    def get_document(self, source: str, doc_id: str) -> dict[str, Any] | None:
+        """Pełny dokument z bazy, albo None jeśli jeszcze nie zaimportowany
+        (wtedy wywołujący ma dociągnąć go na żywo - patrz web/app.py)."""
+        rows = self._rows(
+            "SELECT * FROM orzeczenia WHERE source = ? AND doc_id = ?", [source, doc_id])
+        if not rows or not rows[0].get("full_text"):
+            return None
+        return self._decode(rows[0])
+
+    def search_fulltext(self, query: str, source: str = "", limit: int = 20,
+                        offset: int = 0) -> tuple[list[dict[str, Any]], int]:
+        """Szuka w już zaimportowanych dokumentach. Postgres: pełnotekstowo,
+        tokenizacja + ranking przez `search_vector` (config 'simple' + unaccent -
+        PostgreSQL nie ma wbudowanej odmiany polskich słów, więc to dopasowanie
+        tokenów bez końcówek fleksyjnych, nie prawdziwa morfologia jak w SAOS).
+        SQLite (lokalnie/dev): zwykłe LIKE - wystarczające do testów."""
+        query = squash(query)
+        if not query:
+            return [], 0
+        where = ["source = ?"] if source else []
+        params: list[Any] = [source] if source else []
+        if self.is_pg:
+            where.append("search_vector @@ plainto_tsquery('simple', unaccent(?))")
+            params.append(query)
+            where_sql = " AND ".join(where)
+            total = self._rows(
+                f"SELECT COUNT(*) AS n FROM orzeczenia WHERE {where_sql}", params)[0]["n"]
+            rows = self._rows(
+                f"SELECT *, ts_rank(search_vector, "
+                f"plainto_tsquery('simple', unaccent(?))) AS rank "
+                f"FROM orzeczenia WHERE {where_sql} "
+                f"ORDER BY rank DESC, judgment_date DESC LIMIT ? OFFSET ?",
+                [query, *params, int(limit), int(offset)])
+        else:
+            like = f"%{query}%"
+            where.append("(full_text LIKE ? OR signature LIKE ? OR sentencja LIKE ?)")
+            params.extend([like, like, like])
+            where_sql = " AND ".join(where)
+            total = self._rows(
+                f"SELECT COUNT(*) AS n FROM orzeczenia WHERE {where_sql}", params)[0]["n"]
+            rows = self._rows(
+                f"SELECT * FROM orzeczenia WHERE {where_sql} "
+                f"ORDER BY judgment_date DESC LIMIT ? OFFSET ?",
+                [*params, int(limit), int(offset)])
+        return [self._decode(r) for r in rows], int(total)
+
+    def count_fulltext_by_source(self, query: str) -> dict[str, int]:
+        """Ile trafień ma `search_fulltext(query)` w każdym źródle - do zakładek
+        'Sądy powszechne (N)' itd. na stronie wyników, gdy nie wybrano jednego źródła."""
+        query = squash(query)
+        if not query:
+            return {}
+        if self.is_pg:
+            rows = self._rows(
+                "SELECT source, COUNT(*) AS n FROM orzeczenia "
+                "WHERE search_vector @@ plainto_tsquery('simple', unaccent(?)) "
+                "GROUP BY source", [query])
+        else:
+            like = f"%{query}%"
+            rows = self._rows(
+                "SELECT source, COUNT(*) AS n FROM orzeczenia "
+                "WHERE (full_text LIKE ? OR signature LIKE ? OR sentencja LIKE ?) "
+                "GROUP BY source", [like, like, like])
+        return {r["source"]: r["n"] for r in rows}
+
     # ------------------------------------------------------------------
     def latest(self, limit: int = 20, source: str = "", since: str = "") -> list[dict[str, Any]]:
         sql = "SELECT * FROM orzeczenia WHERE 1=1"
@@ -264,7 +479,7 @@ class Store:
     @staticmethod
     def _decode(row: dict[str, Any]) -> dict[str, Any]:
         d = dict(row)
-        for key in ("panel", "thematic"):
+        for key in ("panel", "thematic", "judges"):
             try:
                 d[key] = json.loads(d.get(key) or "[]")
             except (TypeError, ValueError):

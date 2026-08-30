@@ -34,6 +34,8 @@
          {% for k, n in res.totals.items() %}{{ source_label.get(k, k) }}: {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}
        </span>
        {% endif %}
+       {% if from_db|default(false) %}<span class="muted">· z naszego indeksu</span>
+       {% else %}<span class="muted">· pobrane na żywo z portali</span>{% endif %}
     </p>
     {% if res.hits %}<a class="ghost" href="/eksport.csv?{{ request.url.query }}">{{ icon('download', 'ic') }} Pobierz listę (CSV)</a>{% endif %}
   </div>

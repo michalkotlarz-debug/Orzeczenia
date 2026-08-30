@@ -1,8 +1,10 @@
 """Obserwator - cykliczne sprawdzanie, czy w portalach pojawiły się nowe orzeczenia.
 
 Jeden przebieg to: dla każdego włączonego serwisu pobierz kilka pierwszych stron
-najświeższych wyników i zapisz te pozycje, których jeszcze nie widzieliśmy.
-Nic więcej - pełna treść nadal jest pobierana na żądanie, przy otwarciu orzeczenia.
+najświeższych wyników, a dla każdej pozycji, której jeszcze nie ma w bazie, dociągnij
+pełną treść (`registry.document()`) i zapisz ją. To właśnie ten przebieg zapełnia
+własną bazę, z której czyta wyszukiwarka (`Store.search_fulltext`) - obserwator nie jest
+już tylko "licznikiem nowości", tylko głównym mechanizmem importu danych.
 
 Uruchamianie:
   * lokalnie / Railway / VPS:  python -m orzeczenia obserwuj
@@ -69,9 +71,25 @@ def run_source(registry: Registry, store: Store, cfg: Config, source: str) -> Ru
 
     collected = collected[: cfg.poll.max_new_per_run]
     result.seen = len(collected)
-    if collected:
+
+    # Dociągamy pełną treść tylko dla pozycji, których jeszcze nie ma w bazie -
+    # `document()` to osobne zapytanie (albo dwa) do portalu źródłowego, więc nie
+    # ma sensu robić tego dla czegoś, co już mamy.
+    known = store.known_ids(source, (h.doc_id for h in collected))
+    new_ids = list(dict.fromkeys(h.doc_id for h in collected if h.doc_id not in known))
+
+    docs: list[dict] = []
+    for doc_id in new_ids:
         try:
-            result.added = store.upsert(collected)
+            docs.append(registry.document(source, doc_id))
+        except (RateLimited, SourceUnavailable) as exc:
+            log.warning("[%s] pominięto %s: %s", source, doc_id, exc)
+        except Exception:
+            log.exception("[%s] pominięto %s (nieoczekiwany błąd)", source, doc_id)
+
+    if docs:
+        try:
+            result.added = store.upsert_documents(docs)
         except Exception as exc:
             result.status = "blad"
             result.detail = f"zapis do bazy: {exc}"

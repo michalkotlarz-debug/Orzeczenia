@@ -56,6 +56,20 @@ def obserwuj(verbose: bool = typer.Option(False, "--verbose", "-v"),
     raise typer.Exit(1 if any(r.status != "ok" for r in results) else 0)
 
 
+def _redact_url(url: str) -> str:
+    """Adres bazy bez hasła - to trafia na ekran/w logi, hasło nie powinno."""
+    from urllib.parse import urlsplit, urlunsplit
+    parts = urlsplit(url)
+    if not parts.password:
+        return url
+    netloc = parts.hostname or ""
+    if parts.username:
+        netloc = f"{parts.username}:***@{netloc}"
+    if parts.port:
+        netloc += f":{parts.port}"
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
+
 @app.command("baza")
 def baza(config: Path = typer.Option("config.yaml", "--config", "-c")):
     """Pokaż, co obserwator ma już zebrane."""
@@ -64,7 +78,7 @@ def baza(config: Path = typer.Option("config.yaml", "--config", "-c")):
     store = Store(cfg.store.url, cfg.store.keep_days)
     try:
         counts = store.count()
-        typer.echo(f"Baza: {cfg.store.url}")
+        typer.echo(f"Baza: {_redact_url(cfg.store.url)}")
         if not counts:
             typer.echo("Pusto - obserwator jeszcze nie zbierał.")
             return

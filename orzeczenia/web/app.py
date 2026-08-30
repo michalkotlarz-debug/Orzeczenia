@@ -1,12 +1,10 @@
 """Orzecznik - nakładka na publiczne portale orzecznictwa.
 
-Wyszukiwanie nie ma własnej bazy: każde zapytanie i każde otwarcie dokumentu
-to zapytanie na żywo do serwisu źródłowego; my tylko parsujemy odpowiedź
-i pokazujemy ją w spójnym interfejsie.
-
-Jedyny wyjątek to obserwator - lista orzeczeń, które pojawiły się w portalach
-od ostatniego przebiegu. Ona musi być gdzieś zapisana, bo inaczej nie da się
-powiedzieć "to jest nowe". Trzyma ją baza opisana w `store` (config.yaml).
+Wyszukiwanie i otwieranie dokumentów czyta najpierw z własnej bazy (zbieranej
+przez obserwatora - patrz `orzeczenia/obserwator.py`), bo to szybsze i nie
+obciąża portali źródłowych. Dopiero gdy czegoś tam jeszcze nie ma, dociągamy
+na żywo (`registry.search()`/`registry.document()`) - użytkownik nigdy nie
+dostaje pustej strony tylko dlatego, że baza jeszcze nie zdążyła czegoś zebrać.
 """
 from __future__ import annotations
 
@@ -28,6 +26,8 @@ from ..config import load_config
 from ..format import date_pl, plural_pl
 from ..http import RateLimited, SourceUnavailable
 from ..sources import Query, Registry
+from ..sources.base import SearchPage
+from ..store import Store
 
 log = logging.getLogger("orzecznik.web")
 
@@ -108,6 +108,33 @@ def _query(**kw: str) -> Query:
     return Query(**{k: (v or "").strip() for k, v in kw.items()})
 
 
+def _is_simple_phrase(q: Query) -> bool:
+    """Baza umie dziś tylko proste wyszukiwanie pełnotekstowe po frazie -
+    sygnatura/sędzia/podstawa prawna/zakres dat nadal wymagają pytania portalu
+    na żywo (patrz Registry.search)."""
+    return bool(q.phrase) and not any(
+        (q.signature, q.judge, q.legal_basis, q.thematic, q.date_from, q.date_to))
+
+
+def _search(query: Query, page: int, source: str) -> tuple[SearchPage, bool]:
+    """(wynik, czy_z_wlasnej_bazy). Dla prostych fraz próbujemy najpierw bazy -
+    szybciej i bez obciążania portalu; gdy nic tam nie ma (jeszcze niezaimportowane
+    albo baza niedostępna), wracamy do dzisiejszego zachowania: pytamy na żywo."""
+    if _is_simple_phrase(query) and query.sort == "relevance":
+        store = get_store()
+        if store is not None:
+            per_page = 10
+            rows, total = store.search_fulltext(
+                query.phrase, source=source, limit=per_page, offset=(page - 1) * per_page)
+            if rows:
+                res = SearchPage(hits=[Store.to_hit(r) for r in rows],
+                                 page=page, per_page=per_page)
+                res.totals = ({source: total} if source
+                              else store.count_fulltext_by_source(query.phrase))
+                return res, True
+    return registry.search(query, page=page, only=source), False
+
+
 # ----------------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
@@ -129,20 +156,25 @@ def search_page(
     query = _query(phrase=q, signature=signature, judge=judge, thematic=thematic,
                    legal_basis=legal_basis, date_field=date_field,
                    date_from=date_from, date_to=date_to, sort=sort)
-    res = registry.search(query, page=page, only=source)
+    res, from_db = _search(query, page=page, source=source)
     params = {k: v for k, v in request.query_params.items() if k != "page" and v}
     return templates.TemplateResponse(request, "results.html", {
         "q": q, "res": res, "query": query, "page": page, "params": params,
-        "source": source})
+        "source": source, "from_db": from_db})
 
 
 @app.get("/orzeczenie/{source}/{doc_id}", response_class=HTMLResponse)
 def document_page(request: Request, source: str, doc_id: str, q: str = ""):
-    try:
-        doc = registry.document(source, doc_id)
-    except (RateLimited, SourceUnavailable, ValueError) as exc:
-        return templates.TemplateResponse(request, "blad.html", {
-            "tytul": "Nie udało się pobrać orzeczenia", "opis": str(exc)}, status_code=502)
+    store = get_store()
+    doc = store.get_document(source, doc_id) if store else None
+    if doc is None:
+        try:
+            doc = registry.document(source, doc_id)
+        except (RateLimited, SourceUnavailable, ValueError) as exc:
+            return templates.TemplateResponse(request, "blad.html", {
+                "tytul": "Nie udało się pobrać orzeczenia", "opis": str(exc)}, status_code=502)
+    else:
+        doc["source_label"] = registry.labels.get(source, source)
     return templates.TemplateResponse(request, "document.html", {"d": doc, "q": q})
 
 
@@ -232,9 +264,9 @@ def api_search(q: str = "", signature: str = "", judge: str = "", thematic: str 
     query = _query(phrase=q, signature=signature, judge=judge, thematic=thematic,
                    legal_basis=legal_basis, date_field=date_field,
                    date_from=date_from, date_to=date_to, sort=sort)
-    res = registry.search(query, page=page, only=source)
+    res, from_db = _search(query, page=page, source=source)
     return {"page": page, "totals": res.totals, "total": res.total,
-            "errors": res.errors, "notes": res.notes,
+            "errors": res.errors, "notes": res.notes, "z_bazy": from_db,
             "results": [{**h.__dict__, "url": h.url} for h in res.hits]}
 
 
