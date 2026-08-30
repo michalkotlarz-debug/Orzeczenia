@@ -1,14 +1,55 @@
 # Orzecznik — wyszukiwarka orzeczeń na żywo
 
-Nakładka na dwa publiczne portale orzecznictwa. **Nie ma własnej bazy danych
-i niczego nie archiwizuje.** Każde wyszukanie i każde otwarcie orzeczenia to
-zapytanie wysyłane w tej samej chwili do serwisu źródłowego — my tylko
-parsujemy odpowiedź i pokazujemy ją w jednym, spójnym interfejsie.
+Nakładka na trzy publiczne portale orzecznictwa. **Archiwum zostaje tam, gdzie
+jest.** Każde wyszukanie i każde otwarcie orzeczenia to zapytanie wysyłane
+w tej samej chwili do serwisu źródłowego — my tylko parsujemy odpowiedź
+i pokazujemy ją w jednym, spójnym interfejsie.
 
 | Źródło | Adres | Co daje |
 |---|---|---|
 | Portal Orzeczeń Sądów Powszechnych | `orzeczenia.ms.gov.pl` | wyroki, postanowienia i uzasadnienia sądów rejonowych, okręgowych i apelacyjnych |
+| Centralna Baza Orzeczeń Sądów Administracyjnych | `orzeczenia.nsa.gov.pl` | orzeczenia NSA i szesnastu WSA, sygnatury typu `I SA/Łd 269/26` |
 | Baza orzeczeń KIO | `orzeczenia.uzp.gov.pl` | orzeczenia Krajowej Izby Odwoławczej, sygnatury typu `KIO 1919/16` |
+
+Jedyne, co aplikacja u siebie zapisuje, to **lista nowo zauważonych sygnatur** —
+po to, żeby dało się odpowiedzieć na pytanie „co przybyło od wczoraj". Treści
+orzeczeń nadal nie kopiujemy.
+
+## ⚠ robots.txt CBOSA — przeczytaj, zanim opublikujesz serwis
+
+`orzeczenia.nsa.gov.pl/robots.txt` zabrania **wszystkim** robotom dwóch
+ścieżek, których używa wyszukiwarka:
+
+```
+User-agent: *
+Disallow: /cbo/find
+Disallow: /cbo/search
+```
+
+Adresy pojedynczych orzeczeń (`/doc/…`) zakazem **nie** są objęte, więc
+otwieranie i pobieranie treści jest poza sporem. Problem dotyczy samego
+wyszukiwania.
+
+Co z tym zrobiono w kodzie:
+
+* `sources.nsa.ignore_robots: true` — wyszukiwanie **uruchamiane ręcznie przez
+  człowieka** idzie do CBOSA mimo zakazu. Argument: to nie jest indeksowanie
+  bazy, tylko przekazanie jednego zapytania jednego użytkownika. Ocena tego
+  argumentu należy do Ciebie jako wydawcy serwisu — flagę można wyłączyć
+  jedną linijką i wtedy CBOSA zostanie po prostu pominięta.
+* `sources.nsa.poll: false` — **obserwator dla CBOSA jest wyłączony**, i to
+  nie jest przypadek. Automat chodzący co dobę po `/cbo/search` to już
+  bezspornie robot, którego robots.txt zakazuje. Portale MS i KIO takiego
+  zakazu nie mają (MS w ogóle nie publikuje `robots.txt` — pod `/robots.txt`
+  oddaje stronę HTML), więc tam obserwator działa.
+
+CBOSA dodatkowo **odcina klientów pytających zbyt gęsto** — sprawdzone
+w praktyce. Dlatego `http.delay_seconds` jest wspólny dla wszystkich hostów
+i lepiej go nie skracać.
+
+Oficjalnego API ani zrzutu danych NSA nie udostępnia (zarządzenie Prezesa NSA
+o publikacji orzeczeń w systemach teleinformatycznych nie przewiduje takiej
+ścieżki), a `sitemap.xml` pochodzi z 2009 r. i jest bezużyteczny.
 
 ## Co widać przy każdym orzeczeniu
 
@@ -35,10 +76,31 @@ pip install -r requirements.txt
 python -m orzeczenia.cli serve     # http://127.0.0.1:8000
 ```
 
-To wszystko — nie ma kroku „zbuduj bazę" ani harmonogramu. Aplikacja jest
-gotowa od pierwszego uruchomienia.
+To wszystko — wyszukiwarka jest gotowa od pierwszego uruchomienia, bez kroku
+„zbuduj bazę".
+
+Obserwator (nowe orzeczenia) uruchamia się osobno i jest opcjonalny:
+
+```bash
+python -m orzeczenia.cli obserwuj      # jeden przebieg
+python -m orzeczenia.cli baza          # co już zebrał
+```
+
+W cronie, np. codziennie o 5:00:
+
+```
+0 5 * * *  cd /sciezka/do/orzeczenia && .venv/bin/python -m orzeczenia.cli obserwuj
+```
+
+Na Vercelu robi to harmonogram wpisany w `vercel.json`, który woła
+`GET /api/obserwator/uruchom`. Endpoint jest chroniony tokenem — ustaw
+`ORZECZNIK_POLL_TOKEN` (i ten sam ciąg jako `CRON_SECRET` w Vercelu).
 
 W Dockerze: `docker build -t orzecznik . && docker run -p 8000:8000 orzecznik`
+
+Na Vercelu: repozytorium jest już skonfigurowane (`app.py`, `vercel.json`,
+`.python-version`) — wystarczy zaimportować projekt. Szczegóły i ostrzeżenia:
+**[deploy/VERCEL.md](deploy/VERCEL.md)**.
 
 ### Backend i frontend to jedna aplikacja
 
@@ -51,17 +113,50 @@ Jeśli chcesz podpiąć własny frontend albo wystawić serwis publicznie, w kat
 instrukcja: **[deploy/README.md](deploy/README.md)**. Dla frontendu z innej
 domeny dopisz ją w `config.yaml` → `web.cors_origins`.
 
+**Czy potrzebny jest Railway?** Do samego wyszukiwania nie — Vercel wystarczy
+także dla serwisu publicznego. Do obserwatora potrzebna jest baza, która
+przeżyje restart (katalog aplikacji na Vercelu jest tylko do odczytu) oraz
+harmonogram; na planie Hobby ten drugi chodzi najwyżej raz na dobę. Pełne
+porównanie trzech układów: **[deploy/railway.md](deploy/railway.md)**.
+
+## Obserwator — schemat przenoszenia orzeczeń
+
+Jeden przebieg to, dla każdego serwisu z `poll: true`: pobierz kilka
+pierwszych stron najświeższych wyników i zapisz te sygnatury, których jeszcze
+nie widzieliśmy. Zapisujemy metrykę i urywek, nigdy pełnej treści — ta jest
+pobierana dopiero przy otwarciu orzeczenia.
+
+| Kolumna | Skąd |
+|---|---|
+| `source`, `doc_id` | klucz naturalny: serwis + identyfikator w tym serwisie |
+| `signature`, `doc_type`, `court`, `division` | z listy wyników portalu |
+| `judgment_date`, `publication_date` | rozróżniane osobno; CBOSA i KIO nie prowadzą daty publikacji |
+| `outcome`, `excerpt`, `panel`, `thematic` | tyle, ile podaje lista wyników |
+| `source_url` | adres oryginału |
+| `first_seen_at` | **kiedy TA aplikacja zobaczyła orzeczenie po raz pierwszy** |
+| `last_seen_at` | ostatni przebieg, w którym pozycja jeszcze była |
+
+Tabela `przebiegi` trzyma historię: kiedy, dla jakiego serwisu, ile obejrzano,
+ile było nowych, czy się udało. Widać ją na `/nowe` i w `python -m orzeczenia.cli baza`.
+
+Baza: domyślnie SQLite (`dane/orzecznik.sqlite3`). W chmurze ustaw
+`DATABASE_URL` na Postgresa — `postgres://…`, `postgresql://…`
+i `postgresql+psycopg://…` są rozpoznawane.
+
 ## Strony
 
 | Adres | Co robi |
 |---|---|
 | `/` | duże pole wyszukiwania i „ostatnio opublikowane" pobierane na żywo |
-| `/szukaj` | wyniki z obu portali, z zakładkami i licznikami per źródło |
+| `/szukaj` | wyniki ze wszystkich portali, z zakładkami i licznikami per źródło |
+| `/nowe` | co obserwator zauważył jako nowe + historia przebiegów |
 | `/orzeczenie/{źródło}/{id}` | pełna treść orzeczenia z metryką |
 | `/orzeczenie/{źródło}/{id}/pobierz.txt` | to samo jako plik tekstowy |
 | `/ulubione` | zapisane sygnatury (tylko w Twojej przeglądarce) |
 | `/eksport.csv` | bieżąca strona wyników jako CSV |
 | `/api/szukaj`, `/api/orzeczenie/{źródło}/{id}` | to samo w JSON |
+| `/api/nowe` | lista nowych orzeczeń w JSON |
+| `/api/obserwator/uruchom` | jeden przebieg obserwatora (wymaga tokenu) |
 | `/api/docs` | interaktywna dokumentacja API |
 
 ## Kryteria wyszukiwania
@@ -136,20 +231,24 @@ orzeczenia/
   config.py           wczytywanie config.yaml
   http.py             klient HTTP: odstępy, cache w RAM, wykrywanie CAPTCHY
   format.py           daty po polsku, odmiana liczebników
-  cli.py              jedna komenda: serve
+  cli.py              komendy: serve, obserwuj, baza
+  store.py            baza nowych orzeczeń (SQLite lub Postgres, bez ORM-a)
+  obserwator.py       jeden przebieg: co nowego pojawiło się w portalach
   parse/common.py     daty, sygnatury, skład orzekający, podział sentencja/uzasadnienie
   sources/
     base.py           Query, Hit, SearchPage
     ms_gov.py         Portal Orzeczeń — budowa adresów i parsowanie
+    nsa_cbosa.py      CBOSA — sesja POST /cbo/search + GET /cbo/find?p=N
     kio_uzp.py        baza KIO — budowa adresów i parsowanie
-    registry.py       równoległe odpytanie obu źródeł i scalenie wyników
+    registry.py       równoległe odpytanie źródeł i scalenie wyników
   web/
     app.py            trasy FastAPI i API JSON
     templates/        Jinja2
     static/           style.css i app.js (ulubione, filtry)
 tests/
-  fixtures/           prawdziwe fragmenty HTML z obu portali
-  test_sources.py     adresy, parsery, scalanie, awarie źródeł, cache
+  fixtures/           prawdziwe fragmenty HTML z portali
+  test_sources.py     adresy, parsery, scalanie, awarie źródeł, cache (MS + KIO)
+  test_nsa.py         CBOSA: formularz, lista, dokument, baza obserwatora
   test_templates.py   renderowanie wszystkich stron
 ```
 
@@ -157,11 +256,12 @@ tests/
 
 ```bash
 python tests/test_sources.py
+python tests/test_nsa.py
 python tests/test_templates.py
 ```
 
 Testy nie wykonują żadnych zapytań sieciowych — działają na zapisanych
-fragmentach HTML z obu portali. `test_templates.py` zapisuje też podgląd
+fragmentach HTML z portali i na tymczasowej bazie SQLite. `test_templates.py` zapisuje też podgląd
 wszystkich stron do `tests/preview/`. **Uwaga:** te podglądy to statyczne pliki
 bez serwera pod spodem — odnośniki w nich nie działają. Żeby klikać, uruchom
 `python -m orzeczenia.cli serve`.

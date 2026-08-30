@@ -2,3 +2,7 @@
 __pycache__/
 *.pyc
 tests/preview/
+dane/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm

@@ -14,9 +14,9 @@ http:
   max_retries: 2
   backoff_base_seconds: 3.0
   cooldown_seconds: 60
+  # UWAGA: nagłówki HTTP muszą być czystym ASCII - bez polskich znaków.
   user_agent: >-
-    Orzecznik/2.0 (nakładka na publiczne portale orzecznictwa;
-    kontakt: michal.kotlarz@gmail.com)
+    Orzecznik/2.0 (+kontakt: michal.kotlarz@gmail.com)
   respect_robots: true
 
 cache:
@@ -31,10 +31,44 @@ sources:
     enabled: true
     label: "Sądy powszechne"
     base_url: "https://orzeczenia.ms.gov.pl"
+    # Portal nie publikuje robots.txt (na /robots.txt oddaje stronę HTML).
+    poll: true
+    poll_pages: 3
+  nsa:
+    enabled: true
+    label: "Sądy administracyjne"
+    base_url: "https://orzeczenia.nsa.gov.pl"
+    # CBOSA w robots.txt zabrania /cbo/search i /cbo/find WSZYSTKIM robotom.
+    # true = odpytujemy mimo to (wyszukiwanie uruchamiane ręcznie przez człowieka).
+    # Szczegóły i konsekwencje: README, rozdział "robots.txt".
+    ignore_robots: true
+    # Obserwator (automat) to już bezspornie robot - domyślnie wyłączony dla NSA.
+    poll: false
+    poll_pages: 3
   kio:
     enabled: true
     label: "KIO"
     base_url: "https://orzeczenia.uzp.gov.pl"
+    poll: true
+    poll_pages: 2
+
+# ------------------------------------------------------------------
+# Obserwator - cykliczne sprawdzanie, czy pojawiły się nowe orzeczenia.
+# Uruchamiany z zewnątrz: `python -m orzeczenia obserwuj` (cron / Railway)
+# albo GET /api/obserwator/uruchom z nagłówkiem tokenu (Vercel Cron).
+# ------------------------------------------------------------------
+poll:
+  enabled: true
+  lookback_days: 14
+  max_new_per_run: 400
+  token: ""            # albo zmienna środowiskowa ORZECZNIK_POLL_TOKEN
+
+# Baza NOWYCH orzeczeń zebranych przez obserwatora.
+# To nie jest kopia archiwum - wyszukiwanie nadal idzie na żywo do portali.
+store:
+  enabled: true
+  url: "sqlite:///dane/orzecznik.sqlite3"   # w chmurze: zmienna DATABASE_URL
+  keep_days: 400
 
 web:
   host: "127.0.0.1"
