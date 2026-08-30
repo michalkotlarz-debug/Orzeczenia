@@ -12,6 +12,10 @@ from .nsa_cbosa import NsaSource
 
 log = logging.getLogger("orzecznik.registry")
 
+# Portale HTML oddają wyniki po tyle na stronę - nie da się poprosić od razu
+# o 50 czy 100, trzeba doczytać tyle ich "natywnych" stron, ile potrzeba.
+NATIVE_PAGE_SIZE = 10
+
 
 class Registry:
     def __init__(self, cfg):
@@ -33,9 +37,9 @@ class Registry:
         return {k: s.label for k, s in self.sources.items()}   # type: ignore[attr-defined]
 
     # ------------------------------------------------------------------
-    def search(self, q: Query, page: int = 1, only: str = "") -> SearchPage:
+    def search(self, q: Query, page: int = 1, only: str = "", per_page: int = 10) -> SearchPage:
         keys = [only] if only in self.sources else list(self.sources)
-        result = SearchPage(page=page, per_page=10 * len(keys))
+        result = SearchPage(page=page, per_page=per_page)
 
         # Nie każdy serwis prowadzi datę publikacji. Zamiast po cichu oddawać
         # z niego zero wyników, mówimy wprost, że został pominięty.
@@ -49,15 +53,31 @@ class Registry:
             if not keys:
                 return result
 
+        # Każdy wybrany rozmiar strony tłumaczymy na zakres natywnych stron
+        # portalu (po NATIVE_PAGE_SIZE): per_page=50 na drugiej stronie -> strony
+        # 6-10 u źródła. Zwykłe użycie (per_page=10-20) to nadal jedna-dwie
+        # strony, więc obciążenie portali rośnie tylko wtedy, gdy ktoś faktycznie
+        # poprosi o więcej wyników naraz.
+        pages_per_source = max(1, -(-per_page // NATIVE_PAGE_SIZE))
+        native_start = (page - 1) * pages_per_source + 1
+        native_pages = range(native_start, native_start + pages_per_source)
+
         def run(key: str):
             src = self.sources[key]
+            collected: list[Hit] = []
+            total = 0
             try:
-                return key, src.search(q, page), None          # type: ignore[attr-defined]
+                for native_page in native_pages:
+                    hits, total = src.search(q, native_page)      # type: ignore[attr-defined]
+                    if not hits:
+                        break
+                    collected.extend(hits)
+                return key, (collected, total), None
             except (RateLimited, SourceUnavailable) as exc:
-                return key, ([], 0), str(exc)
+                return key, (collected, 0), str(exc)
             except Exception as exc:                            # nieoczekiwane
                 log.exception("[%s] błąd wyszukiwania", key)
-                return key, ([], 0), f"nieoczekiwany błąd: {exc}"
+                return key, (collected, 0), f"nieoczekiwany błąd: {exc}"
 
         with ThreadPoolExecutor(max_workers=max(1, len(keys))) as pool:
             for key, (hits, total), err in pool.map(run, keys):
@@ -68,7 +88,7 @@ class Registry:
                 result.hits.extend(hits)
 
         result.hits = self._post_filter(result.hits, q)
-        result.hits = self._sort(result.hits, q.sort, interleave=len(keys) > 1)
+        result.hits = self._sort(result.hits, q.sort, interleave=len(keys) > 1)[:per_page]
         return result
 
     # ------------------------------------------------------------------

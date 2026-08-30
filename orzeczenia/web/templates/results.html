@@ -37,7 +37,14 @@
        {% if from_db|default(false) %}<span class="muted">· z naszego indeksu</span>
        {% else %}<span class="muted">· pobrane na żywo z portali</span>{% endif %}
     </p>
-    {% if res.hits %}<a class="ghost" href="/eksport.csv?{{ request.url.query }}">{{ icon('download', 'ic') }} Pobierz listę (CSV)</a>{% endif %}
+    <div class="resultsbar-actions">
+      <span class="pagesize">Na stronie:
+        {% for size in page_sizes|default([20, 50, 100]) %}<a
+          class="{% if (per_page|default(20)) == size %}on{% endif %}"
+          href="/szukaj?{{ params|urlencode_extra('per_page', size) }}">{{ size }}</a>{% endfor %}
+      </span>
+      {% if res.hits %}<a class="ghost" href="/eksport.csv?{{ request.url.query }}">{{ icon('download', 'ic') }} Pobierz listę (CSV)</a>{% endif %}
+    </div>
   </div>
 
   <div class="cards">

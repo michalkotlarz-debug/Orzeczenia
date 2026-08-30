@@ -173,7 +173,13 @@ main h2{font-size:17px;font-weight:650;letter-spacing:-.01em}
   border-radius:10px;padding:11px 14px;font-size:13.5px;margin-bottom:16px}
 .warn .ic{color:var(--navy);margin-top:.15em}
 .resultsbar{display:flex;align-items:center;justify-content:space-between;gap:16px;
-  padding-bottom:16px;margin-bottom:20px;border-bottom:1px solid var(--line);font-size:14px}
+  padding-bottom:16px;margin-bottom:20px;border-bottom:1px solid var(--line);font-size:14px;
+  flex-wrap:wrap}
+.resultsbar-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.pagesize{color:var(--muted);font-size:13px;display:inline-flex;align-items:center;gap:6px}
+.pagesize a{color:var(--ink-soft);padding:3px 7px;border-radius:6px}
+.pagesize a:hover{color:var(--navy);background:var(--band)}
+.pagesize a.on{color:var(--navy);font-weight:600;background:var(--navy-soft)}
 .ghost{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border:1px solid var(--line);
   border-radius:9px;background:var(--panel);font-size:13.5px;color:var(--ink-soft)}
 .ghost:hover{border-color:var(--navy);color:var(--navy)}

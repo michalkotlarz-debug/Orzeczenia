@@ -116,14 +116,23 @@ def _is_simple_phrase(q: Query) -> bool:
         (q.signature, q.judge, q.legal_basis, q.thematic, q.date_from, q.date_to))
 
 
-def _search(query: Query, page: int, source: str) -> tuple[SearchPage, bool]:
+PAGE_SIZES = (20, 50, 100)
+DEFAULT_PAGE_SIZE = PAGE_SIZES[0]
+
+
+def _clean_per_page(value: int) -> int:
+    return value if value in PAGE_SIZES else DEFAULT_PAGE_SIZE
+
+
+def _search(query: Query, page: int, source: str,
+           per_page: int = DEFAULT_PAGE_SIZE) -> tuple[SearchPage, bool]:
     """(wynik, czy_z_wlasnej_bazy). Dla prostych fraz próbujemy najpierw bazy -
     szybciej i bez obciążania portalu; gdy nic tam nie ma (jeszcze niezaimportowane
     albo baza niedostępna), wracamy do dzisiejszego zachowania: pytamy na żywo."""
+    per_page = _clean_per_page(per_page)
     if _is_simple_phrase(query) and query.sort == "relevance":
         store = get_store()
         if store is not None:
-            per_page = 10
             rows, total = store.search_fulltext(
                 query.phrase, source=source, limit=per_page, offset=(page - 1) * per_page)
             if rows:
@@ -132,7 +141,7 @@ def _search(query: Query, page: int, source: str) -> tuple[SearchPage, bool]:
                 res.totals = ({source: total} if source
                               else store.count_fulltext_by_source(query.phrase))
                 return res, True
-    return registry.search(query, page=page, only=source), False
+    return registry.search(query, page=page, only=source, per_page=per_page), False
 
 
 # ----------------------------------------------------------------------
@@ -155,15 +164,18 @@ def search_page(
     legal_basis: str = "", date_field: str = "judgment",
     date_from: str = "", date_to: str = "",
     sort: str = "relevance", source: str = "", page: int = Q(1, ge=1),
+    per_page: int = Q(DEFAULT_PAGE_SIZE),
 ):
     query = _query(phrase=q, signature=signature, judge=judge, thematic=thematic,
                    legal_basis=legal_basis, date_field=date_field,
                    date_from=date_from, date_to=date_to, sort=sort)
-    res, from_db = _search(query, page=page, source=source)
+    per_page = _clean_per_page(per_page)
+    res, from_db = _search(query, page=page, source=source, per_page=per_page)
     params = {k: v for k, v in request.query_params.items() if k != "page" and v}
     return templates.TemplateResponse(request, "results.html", {
         "q": q, "res": res, "query": query, "page": page, "params": params,
-        "source": source, "from_db": from_db})
+        "source": source, "from_db": from_db, "per_page": per_page,
+        "page_sizes": PAGE_SIZES})
 
 
 @app.get("/orzeczenie/{source}/{doc_id}", response_class=HTMLResponse)
@@ -263,12 +275,14 @@ def export_csv(q: str = "", signature: str = "", judge: str = "", thematic: str 
 def api_search(q: str = "", signature: str = "", judge: str = "", thematic: str = "",
                legal_basis: str = "", date_field: str = "judgment",
                date_from: str = "", date_to: str = "", sort: str = "relevance",
-               source: str = "", page: int = Q(1, ge=1)):
+               source: str = "", page: int = Q(1, ge=1),
+               per_page: int = Q(DEFAULT_PAGE_SIZE)):
     query = _query(phrase=q, signature=signature, judge=judge, thematic=thematic,
                    legal_basis=legal_basis, date_field=date_field,
                    date_from=date_from, date_to=date_to, sort=sort)
-    res, from_db = _search(query, page=page, source=source)
-    return {"page": page, "totals": res.totals, "total": res.total,
+    per_page = _clean_per_page(per_page)
+    res, from_db = _search(query, page=page, source=source, per_page=per_page)
+    return {"page": page, "per_page": per_page, "totals": res.totals, "total": res.total,
             "errors": res.errors, "notes": res.notes, "z_bazy": from_db,
             "results": [{**h.__dict__, "url": h.url} for h in res.hits]}
 
