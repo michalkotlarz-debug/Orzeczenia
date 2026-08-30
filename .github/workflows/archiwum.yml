@@ -1,0 +1,46 @@
+name: archiwum-ms
+
+# Cyklicznie dogrywa kolejną porcję pełnego archiwum orzeczeń sądów powszechnych
+# (ncourt-api) wprost do bazy Postgres (Neon) używanej przez aplikację - żeby
+# to działało samo, bez włączonego komputera i bez zużywania tokenów na
+# ręczne uruchamianie. Stan "co już mamy" trzyma się w bazie (known_ids), więc
+# każdy przebieg sam wznawia się tam, gdzie skończył poprzedni - nie ma tu
+# żadnego pliku/kursora do pilnowania między uruchomieniami.
+#
+# Wymaga sekretu DATABASE_URL w ustawieniach repozytorium
+# (Settings -> Secrets and variables -> Actions -> New repository secret) -
+# ten sam connection string co w Vercelu (Neon).
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Ile NOWYCH orzeczeń pobrać w tym przebiegu"
+        default: "150"
+
+concurrency:
+  group: archiwum-ms
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Importuj kolejną porcję archiwum
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python -m orzeczenia.cli importuj-ms --full \
+            --limit "${{ github.event.inputs.limit || '150' }}"

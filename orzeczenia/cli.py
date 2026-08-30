@@ -61,7 +61,13 @@ def importuj_ms(
     limit: int = typer.Option(1000, "--limit", help="Ile NOWYCH orzeczeń maksymalnie pobrać"),
     since: str = typer.Option(None, "--since",
                               help="RRRR-MM-DD - od kiedy szukać w archiwum "
-                                   "(domyślnie 90 dni wstecz)"),
+                                   "(domyślnie 90 dni wstecz, z --full: całe archiwum)"),
+    full: bool = typer.Option(False, "--full",
+                              help="Sięgnij po CAŁY dostępny zbiór (ok. 465 tys. pozycji), "
+                                   "nie tylko okno 90 dni. Do wielokrotnego, cyklicznego "
+                                   "wywoływania (np. z GitHub Actions co 30 min) - stan "
+                                   "'co już mamy' trzyma się sam w bazie, więc kolejne "
+                                   "przebiegi same wznawiają się dalej."),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
     config: Path = typer.Option("config.yaml", "--config", "-c"),
 ):
@@ -75,10 +81,49 @@ def importuj_ms(
                         stream=sys.stdout)
     from .obserwator import import_ms_batch
     cfg = load_config(config)
-    r = import_ms_batch(cfg, limit=limit, since=since)
+    r = import_ms_batch(cfg, limit=limit, since=since, full=full)
     mark = "ok " if r.status == "ok" else "BŁĄD"
     typer.echo(f"[{mark}] obejrzano: {r.seen}  nowych: {r.added}  {r.detail}")
     raise typer.Exit(0 if r.status == "ok" else 1)
+
+
+@app.command("archiwizuj-ms")
+def archiwizuj_ms(
+    out: Path = typer.Option(Path("dane/archiwum/ms"), "--out",
+                             help="Katalog docelowy - jeden plik JSON na orzeczenie"),
+    limit: int = typer.Option(None, "--limit",
+                              help="Maks. liczba NOWO pobranych dokumentów w tym przebiegu "
+                                   "(domyślnie bez limitu)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+    config: Path = typer.Option("config.yaml", "--config", "-c"),
+):
+    """Pełne pobranie archiwum orzeczeń sądów powszechnych na dysk (JSON, 1 plik/orzeczenie).
+
+    W odróżnieniu od `importuj-ms` (nowości od zadanej daty) i `obserwuj`
+    (najświeższe), to jest CAŁY dostępny zbiór z ncourt-api - dziś rzędu
+    465 tysięcy pozycji. Przy odstępie `http.delay_seconds` z config.yaml
+    (domyślnie 1,2 s) i dwóch zapytaniach na dokument do orzeczenia.ms.gov.pl,
+    pełny przebieg trwa rzędu 1-2 tygodni ciągłego działania - portal karze
+    szybsze odpytywanie CAPTCHĄ.
+
+    Bezpiecznie przerwać w dowolnym momencie (Ctrl+C) i uruchomić ponownie -
+    już zapisane pliki są pomijane, więc przebieg wznawia się od miejsca
+    przerwania. Użyj --limit, żeby pobierać w mniejszych, kontrolowanych
+    porcjach zamiast jednego bardzo długiego przebiegu.
+    """
+    logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO,
+                        format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
+                        stream=sys.stdout)
+    from .archiwum import run_archive
+    cfg = load_config(config)
+    r = run_archive(cfg, out, limit=limit)
+    typer.echo(f"W źródle: {r.total_in_source}  już na dysku (przed tym przebiegiem): "
+               f"{r.already_had}  pobrano teraz: {r.downloaded}  błędów: {r.failed}")
+    if r.status == "blad":
+        typer.echo(f"BŁĄD: {r.detail}")
+    if r.interrupted:
+        typer.echo("Przerwano - uruchom to samo polecenie ponownie, żeby kontynuować.")
+    raise typer.Exit(0 if r.status in ("ok", "przerwano") else 1)
 
 
 def _redact_url(url: str) -> str:

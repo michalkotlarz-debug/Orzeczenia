@@ -148,14 +148,38 @@ def run_source(registry: Registry, store: Store, cfg: Config, source: str) -> Ru
     return result
 
 
+# Wcześniej niż powstał portal - z takim 'od' ncourt-api oddaje CAŁY zbiór
+# (patrz orzeczenia/archiwum.py - ten sam próg, tam do zapisu na dysk zamiast
+# do bazy).
+EARLIEST_DATE = "2000-01-01"
+
+
+def _known_ids_chunked(store: Store, source: str, ids: list[str], chunk: int = 2000) -> set[str]:
+    """`known_ids` w kawałkach - przy pełnym archiwum (setki tysięcy id) jedno
+    zapytanie z tyloma parametrami w klauzuli IN przeciążyłoby Postgresa."""
+    known: set[str] = set()
+    for i in range(0, len(ids), chunk):
+        known |= store.known_ids(source, ids[i:i + chunk])
+    return known
+
+
 def import_ms_batch(cfg: Config, registry: Registry | None = None, store: Store | None = None,
-                    limit: int = 1000, since: str | None = None) -> RunResult:
+                    limit: int = 1000, since: str | None = None, full: bool = False) -> RunResult:
     """Jednorazowy, większy import orzeczeń sądów powszechnych przez `ncourt-api` -
-    do ręcznego wywołania (`python -m orzeczenia.cli importuj-ms`), gdy codzienny
-    obserwator (ograniczony do nowości od ostatniego przebiegu) to za mało.
-    Cofa się w oknie dat na tyle, żeby złapać kandydatów do `limit` jeszcze
-    nieznanych pozycji - w przeciwieństwie do `run_source` NIE zatrzymuje się na
-    tym, co już mamy jako punkt odcięcia, tylko sam szuka wstecz."""
+    do ręcznego wywołania (`python -m orzeczenia.cli importuj-ms`) albo z crona
+    (GitHub Actions), gdy codzienny obserwator (ograniczony do nowości od
+    ostatniego przebiegu) to za mało. Cofa się w oknie dat na tyle, żeby złapać
+    kandydatów do `limit` jeszcze nieznanych pozycji - w przeciwieństwie do
+    `run_source` NIE zatrzymuje się na tym, co już mamy jako punkt odcięcia,
+    tylko sam szuka wstecz.
+
+    `full=True`: sięga po CAŁY dostępny zbiór (dziś ok. 465 tys. pozycji) zamiast
+    zwykłego okna 90 dni, i zdejmuje bezpiecznik `_MAX_IDS` na liście - listowanie
+    jest tanie (sam XML, bez pobierania treści), więc powtarzanie go co przebieg
+    jest OK; to pobranie treści (`registry.document`) jest wolne i ograniczone
+    przez `limit`. Stan "co już mamy" trzyma się sam w bazie (`known_ids`), więc
+    kolejne uruchomienia (np. co 30 min z GitHub Actions) same wznawiają się
+    tam, gdzie poprzednie skończyło - bez żadnego pliku/kursora do pilnowania."""
     own_registry = registry is None
     own_store = store is None
     registry = registry or Registry(cfg)
@@ -163,9 +187,13 @@ def import_ms_batch(cfg: Config, registry: Registry | None = None, store: Store 
     result = RunResult(source="ms")
     started = datetime.now(timezone.utc).isoformat(timespec="seconds")
     try:
-        since = since or _window(90)[0]
+        since = since or (EARLIEST_DATE if full else _window(90)[0])
+        # Przy pełnym archiwum strona 1000 pozycji oznacza ok. 465 zapytań tylko
+        # do wylistowania id (przy limiterze 1,2s to ~9 minut) - API wspiera do
+        # 5000/stronę (patrz SAOS), więc dla `full` bierzemy maksymalny rozmiar.
+        list_kwargs = {"max_ids": None, "limit": 5000} if full else {}
         try:
-            ids = NcourtApiSource(registry.http).list_new_ids(since)
+            ids = NcourtApiSource(registry.http).list_new_ids(since, **list_kwargs)
         except (RateLimited, SourceUnavailable) as exc:
             result.status = "blad"
             result.detail = str(exc)
@@ -179,7 +207,7 @@ def import_ms_batch(cfg: Config, registry: Registry | None = None, store: Store 
             return result
 
         result.pages = 1
-        known = store.known_ids("ms", ids)
+        known = _known_ids_chunked(store, "ms", ids)
         new_ids = list(dict.fromkeys(i for i in ids if i not in known))[:limit]
         result.seen = len(new_ids)
 

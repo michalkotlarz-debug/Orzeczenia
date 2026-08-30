@@ -86,6 +86,52 @@ python -m orzeczenia.cli obserwuj      # jeden przebieg
 python -m orzeczenia.cli baza          # co już zebrał
 ```
 
+### Pełne archiwum na dysk (`archiwizuj-ms`)
+
+To już nie obserwator ani import nowości, tylko jednorazowe/wznawialne
+pobranie **całego** dostępnego zbioru sądów powszechnych z `ncourt-api`
+(dziś ok. 465 tys. pozycji) - jeden plik JSON na orzeczenie, prosto na dysk,
+z pominięciem `Store`/SQLite:
+
+```bash
+python -m orzeczenia.cli archiwizuj-ms --out dane/archiwum/ms
+```
+
+Przy odstępie `http.delay_seconds` (domyślnie 1,2 s) i dwóch zapytaniach na
+dokument do orzeczenia.ms.gov.pl, pełny przebieg to rzędu 1-2 tygodni
+ciągłego działania - portal karze szybsze odpytywanie CAPTCHĄ. Bezpiecznie
+przerwać (Ctrl+C) i uruchomić ponownie: już zapisane pliki są pomijane, więc
+kolejne uruchomienie wznawia od miejsca przerwania. `--limit N` ogranicza
+liczbę nowo pobranych dokumentów w jednym przebiegu, żeby robić to porcjami
+(np. w cronie co noc). Część starszych pozycji portal oddaje bez treści
+(„Błąd danych” na `/content/…` mimo że `/details/…` działa) - to liczone jest
+jako błąd tej pozycji i przebieg leci dalej, nie przerywa się.
+
+### Pełne archiwum wprost do bazy, automatycznie (`importuj-ms --full` + GitHub Actions)
+
+To wariant, z którego korzysta wdrożona aplikacja: zamiast zapisywać na dysk
+(`archiwizuj-ms` wyżej), `importuj-ms --full` pisze od razu do tej samej bazy
+Postgres, z której czyta wyszukiwarka — każda zaimportowana pozycja jest
+natychmiast przeszukiwalna na stronie.
+
+```bash
+python -m orzeczenia.cli importuj-ms --full --limit 150
+```
+
+Stan „co już mamy” trzyma się sam w bazie (`known_ids`) — nie ma żadnego
+pliku/kursora do pilnowania, więc kolejne uruchomienia same wznawiają się
+tam, gdzie skończyło poprzednie. Dzięki temu ten sam przebieg da się wołać
+cyklicznie, niezależnie od tego, czy czyjś komputer jest włączony.
+
+Właśnie to robi `.github/workflows/archiwum.yml`: uruchamia powyższą komendę
+co 30 minut na infrastrukturze GitHuba (`workflow_dispatch` pozwala też
+odpalić ręcznie z zakładki *Actions*). Jedyny wymagany krok ręczny: dodać
+sekret repozytorium `DATABASE_URL` (Settings → Secrets and variables →
+Actions → New repository secret) z tym samym connection stringiem co w
+Vercelu. Przy ok. 150 nowych pozycjach na przebieg i typowym tempie
+(limiter + okazjonalne blokady CAPTCHA) cały zbiór (dziś ok. 465 tys.)
+zaimportuje się w tygodnie, bez udziału człowieka i bez zużywania tokenów.
+
 W cronie, np. codziennie o 5:00:
 
 ```
@@ -274,7 +320,10 @@ fragment HTML do `tests/fixtures/`, popraw selektor i uruchom testy.
 ## Uwagi prawne
 
 Orzeczenia są anonimizowane u źródła (inicjały, `(...)`) — serwis niczego nie
-deanonimizuje i nie zmienia treści. Nie przechowuje też orzeczeń: pokazuje to,
-co w danej chwili udostępniają portale. Serwis nieoficjalny; źródłem prawa
-pozostaje treść oryginalna. Adres kontaktowy w `http.user_agent` jest wysyłany
-do portali przy każdym zapytaniu — wpisz tam swój.
+deanonimizuje i nie zmienia treści. Od Fazy 1 (własna baza + indeks) serwis
+**przechowuje treść orzeczeń we własnej bazie** (Postgres/Neon), żeby
+wyszukiwanie było szybsze i nie obciążało portali źródłowych przy każdym
+zapytaniu — to wciąż ta sama, już zanonimizowana u źródła treść, tylko
+skopiowana zamiast pytana za każdym razem na żywo. Serwis nieoficjalny;
+źródłem prawa pozostaje treść oryginalna. Adres kontaktowy w `http.user_agent`
+jest wysyłany do portali przy każdym zapytaniu — wpisz tam swój.
