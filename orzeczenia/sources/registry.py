@@ -8,6 +8,7 @@ from ..http import PoliteClient, RateLimited, SourceUnavailable
 from .base import Hit, Query, SearchPage
 from .kio_uzp import KioSource
 from .ms_gov import MsSource
+from .nsa_cbosa import NsaSource
 
 log = logging.getLogger("orzecznik.registry")
 
@@ -19,6 +20,8 @@ class Registry:
         self.sources: dict[str, object] = {}
         if cfg.ms.enabled:
             self.sources["ms"] = MsSource(cfg.ms, self.http)
+        if cfg.nsa.enabled:
+            self.sources["nsa"] = NsaSource(cfg.nsa, self.http)
         if cfg.kio.enabled:
             self.sources["kio"] = KioSource(cfg.kio, self.http)
 
@@ -33,6 +36,18 @@ class Registry:
     def search(self, q: Query, page: int = 1, only: str = "") -> SearchPage:
         keys = [only] if only in self.sources else list(self.sources)
         result = SearchPage(page=page, per_page=10 * len(keys))
+
+        # Nie każdy serwis prowadzi datę publikacji. Zamiast po cichu oddawać
+        # z niego zero wyników, mówimy wprost, że został pominięty.
+        if q.date_field == "publication" and (q.date_from or q.date_to):
+            skipped = [k for k in keys
+                       if not getattr(self.sources[k], "supports_publication_date", True)]
+            for k in skipped:
+                result.notes[k] = ("ten serwis nie prowadzi daty publikacji — "
+                                   "przy tym filtrze go pomijamy")
+            keys = [k for k in keys if k not in skipped]
+            if not keys:
+                return result
 
         def run(key: str):
             src = self.sources[key]

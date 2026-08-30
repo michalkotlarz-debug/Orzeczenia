@@ -50,6 +50,7 @@ class SearchPage:
     hits: list[Hit] = field(default_factory=list)
     totals: dict[str, int] = field(default_factory=dict)     # ile znalazł każdy serwis
     errors: dict[str, str] = field(default_factory=dict)     # serwisy, które zawiodły
+    notes: dict[str, str] = field(default_factory=dict)      # serwisy pominięte świadomie
     page: int = 1
     per_page: int = 10
 
@@ -61,6 +62,8 @@ class SearchPage:
 class Source(Protocol):
     key: str
     label: str
+    # Czy serwis w ogóle prowadzi datę publikacji orzeczenia (CBOSA i KIO - nie).
+    supports_publication_date: bool
 
     def search(self, q: Query, page: int) -> tuple[list[Hit], int]:
         """Zwraca (pozycje ze strony `page`, łączną liczbę trafień w serwisie)."""

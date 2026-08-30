@@ -1,17 +1,24 @@
 """Orzecznik - nakładka na publiczne portale orzecznictwa.
 
-Aplikacja nie przechowuje orzeczeń. Każde wyszukanie i każde otwarcie
-dokumentu to zapytanie na żywo do serwisu źródłowego; my tylko parsujemy
-odpowiedź i pokazujemy ją w spójnym interfejsie.
+Wyszukiwanie nie ma własnej bazy: każde zapytanie i każde otwarcie dokumentu
+to zapytanie na żywo do serwisu źródłowego; my tylko parsujemy odpowiedź
+i pokazujemy ją w spójnym interfejsie.
+
+Jedyny wyjątek to obserwator - lista orzeczeń, które pojawiły się w portalach
+od ostatniego przebiegu. Ona musi być gdzieś zapisana, bo inaczej nie da się
+powiedzieć "to jest nowe". Trzyma ją baza opisana w `store` (config.yaml).
 """
 from __future__ import annotations
 
 import csv
 import io
+import logging
+import secrets
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Query as Q, Request
+from fastapi import FastAPI, Header, Query as Q, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -22,11 +29,47 @@ from ..format import date_pl, plural_pl
 from ..http import RateLimited, SourceUnavailable
 from ..sources import Query, Registry
 
+log = logging.getLogger("orzecznik.web")
+
 BASE_DIR = Path(__file__).parent
 cfg = load_config()
 registry = Registry(cfg)
 
-app = FastAPI(title=cfg.web.site_name, docs_url="/api/docs", openapi_url="/api/openapi.json")
+_store: Any = None
+_store_error: str = ""
+
+
+def get_store():
+    """Baza obserwatora tworzona przy pierwszym użyciu.
+
+    Na Vercelu katalog aplikacji jest tylko do odczytu, więc bez DATABASE_URL
+    ta funkcja zawiedzie - i dobrze: reszta serwisu (wyszukiwanie na żywo)
+    ma działać także wtedy."""
+    global _store, _store_error
+    if _store is not None or _store_error:
+        return _store
+    if not cfg.store.enabled:
+        _store_error = "baza obserwatora wyłączona w konfiguracji (store.enabled)"
+        return None
+    try:
+        from ..store import Store
+        _store = Store(cfg.store.url, cfg.store.keep_days)
+    except Exception as exc:                        # brak zapisu / zły DATABASE_URL
+        _store_error = f"nie udało się otworzyć bazy obserwatora: {exc}"
+        log.warning(_store_error)
+    return _store
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    yield
+    registry.close()
+    if _store is not None:
+        _store.close()
+
+
+app = FastAPI(title=cfg.web.site_name, docs_url="/api/docs",
+              openapi_url="/api/openapi.json", lifespan=lifespan)
 # Backend jest jednocześnie API: pozwalamy pytać go z innego frontendu
 # (lista dozwolonych źródeł w config.yaml -> web.cors_origins).
 if cfg.web.cors_origins:
@@ -59,11 +102,6 @@ def _qs(params: dict[str, Any], **override: Any) -> str:
 
 templates.env.filters["urlencode_page"] = lambda p, page: _qs(p, page=page)
 templates.env.filters["urlencode_extra"] = lambda p, k, v: _qs(p, **{k: v, "page": 1})
-
-
-@app.on_event("shutdown")
-def _shutdown() -> None:
-    registry.close()
 
 
 def _query(**kw: str) -> Query:
@@ -145,6 +183,17 @@ def download_document(source: str, doc_id: str):
         headers={"Content-Disposition": f'attachment; filename="{name}.txt"'})
 
 
+@app.get("/nowe", response_class=HTMLResponse)
+def new_page(request: Request, source: str = "", limit: int = Q(50, ge=1, le=200)):
+    """Co pojawiło się w portalach od ostatnich przebiegów obserwatora."""
+    store = get_store()
+    rows = store.latest(limit=limit, source=source) if store else []
+    runs = store.runs(8) if store else []
+    return templates.TemplateResponse(request, "nowe.html", {
+        "rows": rows, "runs": runs, "source": source,
+        "blad": _store_error if store is None else ""})
+
+
 @app.get("/ulubione", response_class=HTMLResponse)
 def favourites_page(request: Request):
     """Lista jest budowana w przeglądarce z localStorage - serwer nic o niej nie wie."""
@@ -184,7 +233,8 @@ def api_search(q: str = "", signature: str = "", judge: str = "", thematic: str 
                    legal_basis=legal_basis, date_field=date_field,
                    date_from=date_from, date_to=date_to, sort=sort)
     res = registry.search(query, page=page, only=source)
-    return {"page": page, "totals": res.totals, "total": res.total, "errors": res.errors,
+    return {"page": page, "totals": res.totals, "total": res.total,
+            "errors": res.errors, "notes": res.notes,
             "results": [{**h.__dict__, "url": h.url} for h in res.hits]}
 
 
@@ -196,6 +246,49 @@ def api_document(source: str, doc_id: str):
         return JSONResponse({"error": str(exc)}, status_code=502)
 
 
+@app.get("/api/nowe")
+def api_new(source: str = "", since: str = "", limit: int = Q(50, ge=1, le=200)):
+    """Orzeczenia, które obserwator zobaczył po raz pierwszy - najnowsze na górze."""
+    store = get_store()
+    if store is None:
+        return JSONResponse({"error": _store_error}, status_code=503)
+    return {"count": store.count(), "results": store.latest(limit=limit, source=source,
+                                                            since=since)}
+
+
+@app.get("/api/obserwator/uruchom")
+def api_poll(x_poll_token: str = Header("", alias="X-Poll-Token"),
+             authorization: str = Header("", alias="Authorization")):
+    """Jeden przebieg obserwatora, wołany z zewnątrz (Vercel Cron, cron systemowy).
+
+    Zabezpieczone tokenem - inaczej każdy mógłby kazać nam odpytywać portale.
+    Vercel Cron wysyła nagłówek `Authorization: Bearer <CRON_SECRET>`."""
+    token = cfg.poll.token
+    if not token:
+        return JSONResponse(
+            {"error": "ustaw ORZECZNIK_POLL_TOKEN (albo poll.token), zanim włączysz cron"},
+            status_code=503)
+    given = x_poll_token or authorization.removeprefix("Bearer ").strip()
+    if not secrets.compare_digest(given, token):
+        return JSONResponse({"error": "zły token"}, status_code=401)
+    if not cfg.poll.enabled:
+        return JSONResponse({"error": "obserwator wyłączony (poll.enabled)"}, status_code=503)
+
+    store = get_store()
+    if store is None:
+        return JSONResponse({"error": _store_error}, status_code=503)
+
+    from ..obserwator import run_once
+    results = run_once(cfg, registry=registry, store=store)
+    return {"ok": all(r.status == "ok" for r in results),
+            "przebiegi": [r.as_dict() for r in results],
+            "nowych": sum(r.added for r in results)}
+
+
 @app.get("/api/health")
 def health():
-    return {"ok": True, "sources": list(registry.sources), "cache": len(registry.http.cache)}
+    store = get_store()
+    return {"ok": True, "sources": list(registry.sources),
+            "cache": len(registry.http.cache),
+            "baza": store.count() if store else None,
+            "baza_blad": _store_error or None}

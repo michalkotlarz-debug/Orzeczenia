@@ -1,0 +1,22 @@
+name: testy
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  testy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      # Testy nie wykonują zapytań sieciowych - działają na zapisanych
+      # fragmentach HTML z obu portali.
+      - run: python tests/test_sources.py
+      - run: python tests/test_nsa.py
+      - run: python tests/test_templates.py

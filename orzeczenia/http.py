@@ -13,7 +13,7 @@ import threading
 import time
 import urllib.robotparser
 from collections import OrderedDict
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 import httpx
 
@@ -37,6 +37,11 @@ BLOCK_MARKERS = (
     "Access Denied",
     "Request Rejected",
 )
+
+
+def _ascii(text: str) -> str:
+    """Nagłówek HTTP musi dać się zapisać w ASCII."""
+    return " ".join(text.split()).encode("ascii", "replace").decode("ascii")
 
 
 def looks_blocked(html: str) -> bool:
@@ -112,7 +117,9 @@ class PoliteClient:
         self.cache = TTLCache(cache_cfg.max_entries)
         self.client = httpx.Client(
             headers={
-                "User-Agent": " ".join(http_cfg.user_agent.split()),
+                # Nagłówki HTTP są ASCII - polski znak w User-Agent wywala httpx
+                # przy tworzeniu klienta, czyli przy starcie całej aplikacji.
+                "User-Agent": _ascii(http_cfg.user_agent),
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "pl-PL,pl;q=0.9",
                 "Accept-Encoding": "gzip, deflate",
@@ -165,20 +172,48 @@ class PoliteClient:
                         f" ({reason})" if reason else "")
 
     # ------------------------------------------------------------------
-    def get(self, url: str, *, ttl: int | None = None) -> str:
-        ttl = self.cache_cfg.listing_ttl_seconds if ttl is None else ttl
-        if (hit := self.cache.get(url)) is not None:
-            return hit
+    def get(self, url: str, *, ttl: int | None = None, ignore_robots: bool = False,
+            cache_key: str | None = None, cookies=None) -> str:
+        return self._cached("GET", url, None, ttl, ignore_robots, cache_key, cookies)
 
-        if not self._robots_ok(url):
-            raise SourceUnavailable(f"robots.txt zabrania pobierania: {url}")
+    def post(self, url: str, data: dict[str, str], *, ttl: int | None = None,
+             ignore_robots: bool = False, cache_key: str | None = None, cookies=None) -> str:
+        return self._cached("POST", url, data, ttl, ignore_robots, cache_key, cookies)
+
+    def session(self, tag: str = "") -> "Session":
+        """Kilka żądań dzielących ciasteczka - CBOSA trzyma wynik wyszukiwania
+        w sesji po stronie serwera, więc kolejne strony da się pobrać tylko
+        tym samym 'klientem'."""
+        return Session(self, tag)
+
+    # ------------------------------------------------------------------
+    def _cached(self, method, url, data, ttl, ignore_robots, cache_key, cookies) -> str:
+        ttl = self.cache_cfg.listing_ttl_seconds if ttl is None else ttl
+        key = cache_key or (url if method == "GET" else
+                            url + "|" + urlencode(sorted((data or {}).items())))
+        if (hit := self.cache.get(key)) is not None:
+            return hit
+        text = self._fetch(method, url, data, ignore_robots, cookies)
+        self.cache.put(key, text, ttl)
+        return text
+
+    def _fetch(self, method: str, url: str, data: dict[str, str] | None,
+               ignore_robots: bool, cookies) -> str:
+        if not ignore_robots and not self._robots_ok(url):
+            raise SourceUnavailable(
+                f"robots.txt tego serwisu zabrania pobierania tego adresu: {url}")
 
         host = urlparse(url).netloc
         last: Exception | None = None
         for attempt in range(1, self.cfg.max_retries + 1):
             self.limiter.wait(host)
             try:
-                r = self.client.get(url)
+                if method == "POST":
+                    r = self.client.post(url, data=data or {}, cookies=cookies,
+                                         headers={"Content-Type":
+                                                  "application/x-www-form-urlencoded"})
+                else:
+                    r = self.client.get(url, cookies=cookies)
             except Exception as exc:
                 last = exc
                 log.warning("błąd połączenia (%s/%s) %s: %s",
@@ -186,21 +221,23 @@ class PoliteClient:
                 time.sleep(self.cfg.backoff_base_seconds * attempt)
                 continue
 
+            if cookies is not None:
+                cookies.update(r.cookies)
+
             if r.status_code == 200:
                 text = r.text
                 if looks_blocked(text):
                     self.slow_down("strona blokady/CAPTCHA")
                     self.limiter.penalise(host, self.cfg.cooldown_seconds)
                     raise RateLimited(
-                        "serwis chwilowo ogranicza zapytania (pokazał CAPTCHA). "
+                        "serwis chwilowo ogranicza zapytania (pokazał stronę blokady). "
                         "Spróbuj ponownie za kilka minut.")
-                self.cache.put(url, text, ttl)
                 return text
 
             if r.status_code in (404, 410):
                 raise SourceUnavailable(f"nie znaleziono dokumentu ({r.status_code})")
 
-            if r.status_code in (429, 500, 502, 503, 504):
+            if r.status_code in (403, 429, 500, 502, 503, 504):
                 wait = self.cfg.backoff_base_seconds * attempt
                 self.limiter.penalise(host, wait)
                 last = SourceUnavailable(f"HTTP {r.status_code}")
@@ -212,3 +249,34 @@ class PoliteClient:
             raise SourceUnavailable(f"HTTP {r.status_code}")
 
         raise SourceUnavailable(f"serwis nie odpowiedział: {last}")
+
+
+class Session:
+    """Ciąg żądań dzielących ciasteczka i prefiks klucza cache'u.
+
+    `tag` powinien jednoznacznie opisywać zapytanie - dzięki temu druga strona
+    wyników jednego wyszukiwania nie wyląduje w cache'u pod tym samym kluczem,
+    co druga strona zupełnie innego wyszukiwania."""
+
+    def __init__(self, parent: PoliteClient, tag: str = ""):
+        self.parent = parent
+        self.tag = tag
+        self.cookies = httpx.Cookies()
+
+    def _key(self, url: str, data: dict[str, str] | None) -> str:
+        extra = urlencode(sorted((data or {}).items()))
+        return f"{self.tag}|{url}|{extra}"
+
+    def get(self, url: str, *, ttl: int | None = None, ignore_robots: bool = False,
+            cache: bool = True) -> str:
+        if not cache:
+            return self.parent._fetch("GET", url, None, ignore_robots, self.cookies)
+        return self.parent.get(url, ttl=ttl, ignore_robots=ignore_robots,
+                               cache_key=self._key(url, None), cookies=self.cookies)
+
+    def post(self, url: str, data: dict[str, str], *, ttl: int | None = None,
+             ignore_robots: bool = False, cache: bool = True) -> str:
+        if not cache:
+            return self.parent._fetch("POST", url, data, ignore_robots, self.cookies)
+        return self.parent.post(url, data, ttl=ttl, ignore_robots=ignore_robots,
+                                cache_key=self._key(url, data), cookies=self.cookies)

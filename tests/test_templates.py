@@ -28,7 +28,7 @@ WEB = Path(__file__).resolve().parents[1] / "orzeczenia" / "web"
 CSS = (WEB / "static" / "style.css").read_text()
 JS = (WEB / "static" / "app.js").read_text()
 
-LABELS = {"ms": "Sądy powszechne", "kio": "KIO"}
+LABELS = {"ms": "Sądy powszechne", "nsa": "Sądy administracyjne", "kio": "KIO"}
 env = Environment(loader=FileSystemLoader(str(WEB / "templates")),
                   undefined=StrictUndefined, autoescape=True)
 env.globals.update(
@@ -85,8 +85,11 @@ class FakeHttp:
 
 
 def make_registry(fail=None):
+    # Serwisy podmieniamy na atrapy, więc CBOSA (które nie ma tu fixture'a
+    # listy) wyłączamy, żeby test nie próbował wychodzić do sieci.
     cfg = Config(ms=SourceConfig(label=LABELS["ms"], base_url="https://orzeczenia.ms.gov.pl"),
-                 kio=SourceConfig(label=LABELS["kio"], base_url="https://orzeczenia.uzp.gov.pl"))
+                 kio=SourceConfig(label=LABELS["kio"], base_url="https://orzeczenia.uzp.gov.pl"),
+                 nsa=SourceConfig(enabled=False))
     reg = Registry(cfg)
     reg.http.close()
     reg.http = FakeHttp(fail)
@@ -145,8 +148,21 @@ try:
     render("results.html", "6-brak-wynikow.html", q="", res=empty, query=Query(), page=1,
            params={}, source="")
 
-    render("ulubione.html", "7-ulubione.html")
-    render("blad.html", "8-blad.html", tytul="Nie udało się pobrać orzeczenia",
+    render("nowe.html", "7-nowe-orzeczenia.html", rows=[{
+        "source": "nsa", "doc_id": "226B5A6CD0", "signature": "I SA/Łd 269/26",
+        "doc_type": "wyrok", "court": "WSA w Łodzi", "division": None,
+        "judgment_date": "2026-08-27", "excerpt": "w przedmiocie podatku od towarów i usług oddala skargę.",
+        "first_seen_at": "2026-08-29T05:00:00+00:00",
+        "url": "/orzeczenie/nsa/226B5A6CD0"}],
+        runs=[{"started_at": "2026-08-29T05:00:00+00:00", "source": "ms",
+               "seen": 30, "added": 4, "status": "ok", "detail": ""}],
+        source="", blad="")
+
+    render("nowe.html", "8-nowe-pusto.html", rows=[], runs=[], source="",
+           blad="baza obserwatora niedostępna: brak DATABASE_URL")
+
+    render("ulubione.html", "9-ulubione.html")
+    render("blad.html", "10-blad.html", tytul="Nie udało się pobrać orzeczenia",
            opis="serwis chwilowo ogranicza zapytania (pokazał CAPTCHA).")
     reg.close()
     reg2.close()

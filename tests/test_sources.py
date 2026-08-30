@@ -190,7 +190,9 @@ except ValueError:
 
 # ----------------------------------------------------------------------
 print("\n== scalanie wyników z dwóch serwisów ==")
-cfg = Config(ms=ms_cfg, kio=kio_cfg)
+# NSA wyłączone celowo: ten plik sprawdza scalanie MS + KIO,
+# CBOSA ma własny zestaw testów (tests/test_nsa.py).
+cfg = Config(ms=ms_cfg, kio=kio_cfg, nsa=SourceConfig(enabled=False))
 reg = Registry(cfg)
 reg.http.close()
 reg.http = FakeHttp()

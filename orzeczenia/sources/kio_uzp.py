@@ -41,6 +41,8 @@ class KioSource:
     cfg: Any
     http: Any
     key: str = "kio"
+    # Wyszukiwarka UZP zna tylko datę wydania orzeczenia.
+    supports_publication_date: bool = False
 
     @property
     def label(self) -> str:

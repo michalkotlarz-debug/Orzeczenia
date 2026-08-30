@@ -16,6 +16,11 @@
     {% endfor %}
   </nav>
 
+  {% for key, msg in res.notes.items() %}
+  <p class="warn note">{{ icon('info', 'ic') }}
+     <b>{{ source_label.get(key, key) }}</b> — {{ msg }}.</p>
+  {% endfor %}
+
   {% for key, msg in res.errors.items() %}
   <p class="warn">{{ icon('info', 'ic') }}
      <b>{{ source_label.get(key, key) }}</b> — {{ msg }} Pokazujemy wyniki z pozostałych źródeł.</p>

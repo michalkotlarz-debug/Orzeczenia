@@ -104,13 +104,20 @@ SIGNATURE_RE = re.compile(
 KIO_SIG_RE = re.compile(r"\bKIO\s+\d+\s*/\s*\d{2,4}\b")
 
 
+# Skróty sądów administracyjnych zapisywane w sygnaturach z małych liter:
+# "I SA/Łd 269/26", "II SA/Wa 118/25". Ślepe .upper() by je zepsuło.
+_SIG_COURT_CODE = re.compile(r"(?<=/)([A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż]{2,4})(?=\s)")
+
+
 def normalize_signature(sig: str | None) -> str | None:
-    """'  ii   c  123 / 20 ' -> 'II C 123/20'."""
+    """'  ii   c  123 / 20 ' -> 'II C 123/20'; 'i sa/łd 269/26' -> 'I SA/Łd 269/26'."""
     if not sig:
         return None
     s = squash(sig).replace("–", "-").replace("—", "-")
     s = re.sub(r"\s*/\s*", "/", s)
-    return re.sub(r"\s+", " ", s).strip(" .,;").upper()
+    s = re.sub(r"\s+", " ", s).strip(" .,;").upper()
+    # przywróć zapis typu "/Łd", "/Wa", "/Kr" - pierwsza wielka, reszta mała
+    return _SIG_COURT_CODE.sub(lambda m: m.group(1).capitalize(), s)
 
 
 # ----------------------------------------------------------------------
@@ -294,6 +301,10 @@ def court_level(court: str | None) -> str | None:
         return "SO"
     if "rejonowy" in c:
         return "SR"
+    if "naczelny sad administracyjny" in c or c.strip() == "nsa":
+        return "NSA"
+    if "wojewodzki sad administracyjny" in c or c.startswith("wsa"):
+        return "WSA"
     if "najwyzszy" in c:
         return "SN"
     return None

@@ -61,6 +61,8 @@ class MsSource:
     cfg: Any                # SourceConfig
     http: Any               # PoliteClient
     key: str = "ms"
+    # Portal Orzeczeń podaje zarówno datę orzeczenia, jak i datę publikacji.
+    supports_publication_date: bool = True
 
     @property
     def label(self) -> str:
