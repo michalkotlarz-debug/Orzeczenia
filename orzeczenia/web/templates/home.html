@@ -4,12 +4,10 @@
 <section class="hero">
   <div class="wrap narrow">
     <h1>Orzeczenia sądowe,<br>na wyciągnięcie ręki.</h1>
+    {% include "_searchform.html" %}
     <p class="lede">Wyszukiwarka obejmująca Portal Orzeczeń Sądów Powszechnych,
        Centralną Bazę Orzeczeń Sądów Administracyjnych i bazę orzeczeń KIO —
        razem z sentencją i uzasadnieniem.</p>
-    {% if baza_razem|default(0) %}
-    <p class="lede-stat"><b>{{ "{:,}".format(baza_razem).replace(",", " ") }}</b></p>
-    {% endif %}
   </div>
 </section>
 

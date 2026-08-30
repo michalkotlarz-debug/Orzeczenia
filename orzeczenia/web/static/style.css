@@ -60,9 +60,7 @@ button{font:inherit;cursor:pointer}
 .hero h1{font-family:var(--serif);font-weight:400;font-size:clamp(34px,5.4vw,58px);line-height:1.08;
   letter-spacing:-.02em;margin-bottom:18px}
 .hero .lede{max-width:58ch;margin:0 auto 20px;color:var(--muted);font-size:16.5px;line-height:1.6}
-.hero .lede-stat{margin:0 auto 28px}
-.hero .lede-stat b{color:var(--navy,var(--ink));font-family:var(--serif);font-weight:400;
-  font-size:clamp(28px,4vw,42px);line-height:1}
+.hero .searchform{max-width:640px;margin:0 auto 28px;text-align:left}
 
 /* ---------------- pole wyszukiwania ---------------- */
 .searchband{background:var(--band);border-bottom:1px solid var(--line);padding:22px 0}
