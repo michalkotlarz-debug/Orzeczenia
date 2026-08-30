@@ -79,6 +79,21 @@ CREATE TABLE IF NOT EXISTS przebiegi (
     detail       TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_run_started ON przebiegi (started_at DESC);
+
+-- Pozycje, których pobranie się nie udało (np. stare orzeczenia bez treści -
+-- portal MS oddaje wtedy 400 na /content mimo że /details działa). Bez tego
+-- kolejny przebieg importu wsadowego (Faza 3, `importuj-ms --full`) wciąż od
+-- nowa odkrywałby te same, zawsze nieudane pozycje na początku archiwum i
+-- nigdy nie posunąłby się dalej - trzymane osobno od `orzeczenia`, żeby nie
+-- zaśmiecać wyszukiwarki pustymi rekordami.
+CREATE TABLE IF NOT EXISTS pominiete (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    source       TEXT NOT NULL,
+    doc_id       TEXT NOT NULL,
+    powod        TEXT,
+    skipped_at   TEXT NOT NULL,
+    UNIQUE (source, doc_id)
+);
 """
 
 SCHEMA_PG = SCHEMA_SQLITE.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
@@ -299,6 +314,38 @@ class Store:
             f"SELECT doc_id FROM orzeczenia WHERE source = ? AND doc_id IN ({holes})",
             [source, *ids])
         return {r["doc_id"] for r in rows}
+
+    def skipped_ids(self, source: str, doc_ids: Iterable[str]) -> set[str]:
+        """Pozycje, których pobranie już wcześniej się nie udało (patrz
+        `mark_skipped`) - do pominięcia przy kolejnym przebiegu importu
+        wsadowego, żeby nie próbować w kółko tego samego, co i tak zawiedzie."""
+        ids = list(dict.fromkeys(doc_ids))
+        if not ids:
+            return set()
+        holes = ",".join("?" for _ in ids)
+        rows = self._rows(
+            f"SELECT doc_id FROM pominiete WHERE source = ? AND doc_id IN ({holes})",
+            [source, *ids])
+        return {r["doc_id"] for r in rows}
+
+    def mark_skipped(self, source: str, doc_id: str, reason: str = "") -> None:
+        """Zapamiętuje, że pobranie tej pozycji się nie udało - patrz
+        `skipped_ids`. `INSERT ... ON CONFLICT DO NOTHING`-owe zachowanie
+        ręcznie, bo reszta pliku trzyma się jednego stylu bez natywnego upsertu."""
+        now = _now()
+        try:
+            if self.is_pg:
+                self._run(
+                    "INSERT INTO pominiete (source, doc_id, powod, skipped_at) "
+                    "VALUES (?, ?, ?, ?) ON CONFLICT (source, doc_id) DO NOTHING",
+                    [source, doc_id, (reason or "")[:500], now])
+            else:
+                self._run(
+                    "INSERT OR IGNORE INTO pominiete (source, doc_id, powod, skipped_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    [source, doc_id, (reason or "")[:500], now])
+        except Exception:
+            log.exception("[%s] nie udało się zapisać pominięcia %s", source, doc_id)
 
     def upsert(self, hits: list[Hit]) -> int:
         """Zapisuje pozycje, których jeszcze nie ma. Zwraca liczbę NOWYCH."""

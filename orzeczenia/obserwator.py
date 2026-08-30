@@ -108,8 +108,18 @@ def _fetch_and_store_each(registry: Registry, store: Store, source: str,
     for doc_id in doc_ids:
         try:
             doc = registry.document(source, doc_id)
-        except (RateLimited, SourceUnavailable) as exc:
+        except RateLimited as exc:
+            # Tymczasowe (limiter/CAPTCHA) - NIE zapamiętujemy jako trwałej
+            # porażki, następny przebieg spróbuje ponownie.
+            log.warning("[%s] pominięto %s (tymczasowo): %s", source, doc_id, exc)
+            continue
+        except SourceUnavailable as exc:
+            # Zwykle trwałe (np. stare orzeczenie bez treści - portal MS oddaje
+            # 400 na /content mimo że /details działa) - zapamiętujemy, żeby
+            # kolejny przebieg importu wsadowego nie próbował w kółko tego
+            # samego i mógł posunąć się dalej w archiwum.
             log.warning("[%s] pominięto %s: %s", source, doc_id, exc)
+            store.mark_skipped(source, doc_id, str(exc))
             continue
         except Exception:
             log.exception("[%s] pominięto %s (nieoczekiwany błąd)", source, doc_id)
@@ -163,6 +173,16 @@ def _known_ids_chunked(store: Store, source: str, ids: list[str], chunk: int = 2
     return known
 
 
+def _skipped_ids_chunked(store: Store, source: str, ids: list[str], chunk: int = 2000) -> set[str]:
+    """Jak `_known_ids_chunked`, ale dla pozycji już wcześniej trwale
+    pominiętych (`Store.mark_skipped`) - bez tego pełny import wciąż od nowa
+    odkrywałby te same, zawsze nieudane pozycje na początku archiwum."""
+    skipped: set[str] = set()
+    for i in range(0, len(ids), chunk):
+        skipped |= store.skipped_ids(source, ids[i:i + chunk])
+    return skipped
+
+
 def import_ms_batch(cfg: Config, registry: Registry | None = None, store: Store | None = None,
                     limit: int = 1000, since: str | None = None, full: bool = False) -> RunResult:
     """Jednorazowy, większy import orzeczeń sądów powszechnych przez `ncourt-api` -
@@ -210,7 +230,9 @@ def import_ms_batch(cfg: Config, registry: Registry | None = None, store: Store 
 
         result.pages = 1
         known = _known_ids_chunked(store, "ms", ids)
-        new_ids = list(dict.fromkeys(i for i in ids if i not in known))[:limit]
+        candidates = [i for i in ids if i not in known]
+        skipped = _skipped_ids_chunked(store, "ms", candidates) if full else set()
+        new_ids = list(dict.fromkeys(i for i in candidates if i not in skipped))[:limit]
         result.seen = len(new_ids)
 
         _fetch_and_store_each(registry, store, "ms", new_ids, result)
