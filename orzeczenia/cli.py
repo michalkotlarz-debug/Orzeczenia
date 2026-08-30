@@ -56,6 +56,31 @@ def obserwuj(verbose: bool = typer.Option(False, "--verbose", "-v"),
     raise typer.Exit(1 if any(r.status != "ok" for r in results) else 0)
 
 
+@app.command("importuj-ms")
+def importuj_ms(
+    limit: int = typer.Option(1000, "--limit", help="Ile NOWYCH orzeczeń maksymalnie pobrać"),
+    since: str = typer.Option(None, "--since",
+                              help="RRRR-MM-DD - od kiedy szukać w archiwum "
+                                   "(domyślnie 90 dni wstecz)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+    config: Path = typer.Option("config.yaml", "--config", "-c"),
+):
+    """Jednorazowy, większy import orzeczeń sądów powszechnych przez ncourt-api -
+    nie tylko to, co nowe od ostatniego przebiegu obserwatora, tylko cała paczka
+    z zadanego okna czasu. Do ręcznego uruchomienia, gdy zwykły `obserwuj`
+    (ograniczony do najświeższych nowości) to za mało.
+    """
+    logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO,
+                        format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
+                        stream=sys.stdout)
+    from .obserwator import import_ms_batch
+    cfg = load_config(config)
+    r = import_ms_batch(cfg, limit=limit, since=since)
+    mark = "ok " if r.status == "ok" else "BŁĄD"
+    typer.echo(f"[{mark}] obejrzano: {r.seen}  nowych: {r.added}  {r.detail}")
+    raise typer.Exit(0 if r.status == "ok" else 1)
+
+
 def _redact_url(url: str) -> str:
     """Adres bazy bez hasła - to trafia na ekran/w logi, hasło nie powinno."""
     from urllib.parse import urlsplit, urlunsplit

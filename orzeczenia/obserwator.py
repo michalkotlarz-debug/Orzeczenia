@@ -96,6 +96,32 @@ def _discover_ids_ms(registry: Registry, store: Store, cfg: Config,
     return ids
 
 
+def _fetch_and_store_each(registry: Registry, store: Store, source: str,
+                          doc_ids: list[str], result: RunResult) -> None:
+    """Dociąga pełną treść każdej pozycji i zapisuje ją OD RAZU, jedna po drugiej -
+    nie zbiorczo na końcu. Pobranie treści z portalu potrafi zająć długie minuty
+    (setki dokumentów, limiter tempa) - trzymanie ich w pamięci do jednego
+    zbiorczego zapisu na końcu oznacza, że awaria połączenia z bazą (Neon zamyka
+    długo bezczynne połączenia) albo błąd w środku przebiegu kasuje całą
+    dotychczasową pracę. Częstszy, mniejszy zapis dodatkowo trzyma połączenie
+    z bazą "żywe"."""
+    for doc_id in doc_ids:
+        try:
+            doc = registry.document(source, doc_id)
+        except (RateLimited, SourceUnavailable) as exc:
+            log.warning("[%s] pominięto %s: %s", source, doc_id, exc)
+            continue
+        except Exception:
+            log.exception("[%s] pominięto %s (nieoczekiwany błąd)", source, doc_id)
+            continue
+        try:
+            result.added += store.upsert_documents([doc])
+        except Exception as exc:
+            result.status = "blad"
+            result.detail = f"zapis do bazy ({doc_id}): {exc}"
+            log.exception("[%s] zapis %s nie powiódł się", source, doc_id)
+
+
 def run_source(registry: Registry, store: Store, cfg: Config, source: str) -> RunResult:
     result = RunResult(source=source)
     started = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -114,32 +140,60 @@ def run_source(registry: Registry, store: Store, cfg: Config, source: str) -> Ru
     known = store.known_ids(source, doc_ids)
     new_ids = list(dict.fromkeys(i for i in doc_ids if i not in known))
 
-    # Zapisujemy każdy dokument od razu po pobraniu, nie dopiero na końcu
-    # przebiegu. Pobranie treści z portalu potrafi zająć długie minuty (setki
-    # dokumentów, limiter tempa) - trzymanie ich w pamięci do jednego zbiorczego
-    # zapisu na końcu oznacza, że awaria połączenia z bazą (Neon zamyka długo
-    # bezczynne połączenia) albo błąd w środku przebiegu kasuje całą dotychczasową
-    # pracę. Częstszy, mniejszy zapis dodatkowo trzyma połączenie "żywe".
-    for doc_id in new_ids:
-        try:
-            doc = registry.document(source, doc_id)
-        except (RateLimited, SourceUnavailable) as exc:
-            log.warning("[%s] pominięto %s: %s", source, doc_id, exc)
-            continue
-        except Exception:
-            log.exception("[%s] pominięto %s (nieoczekiwany błąd)", source, doc_id)
-            continue
-        try:
-            result.added += store.upsert_documents([doc])
-        except Exception as exc:
-            result.status = "blad"
-            result.detail = f"zapis do bazy ({doc_id}): {exc}"
-            log.exception("[%s] zapis %s nie powiódł się", source, doc_id)
+    _fetch_and_store_each(registry, store, source, new_ids, result)
 
     store.record_run(result, started)
     log.info("[%s] obejrzano %s, nowych %s (%s)",
              source, result.seen, result.added, result.status)
     return result
+
+
+def import_ms_batch(cfg: Config, registry: Registry | None = None, store: Store | None = None,
+                    limit: int = 1000, since: str | None = None) -> RunResult:
+    """Jednorazowy, większy import orzeczeń sądów powszechnych przez `ncourt-api` -
+    do ręcznego wywołania (`python -m orzeczenia.cli importuj-ms`), gdy codzienny
+    obserwator (ograniczony do nowości od ostatniego przebiegu) to za mało.
+    Cofa się w oknie dat na tyle, żeby złapać kandydatów do `limit` jeszcze
+    nieznanych pozycji - w przeciwieństwie do `run_source` NIE zatrzymuje się na
+    tym, co już mamy jako punkt odcięcia, tylko sam szuka wstecz."""
+    own_registry = registry is None
+    own_store = store is None
+    registry = registry or Registry(cfg)
+    store = store or Store(cfg.store.url, cfg.store.keep_days)
+    result = RunResult(source="ms")
+    started = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    try:
+        since = since or _window(90)[0]
+        try:
+            ids = NcourtApiSource(registry.http).list_new_ids(since)
+        except (RateLimited, SourceUnavailable) as exc:
+            result.status = "blad"
+            result.detail = str(exc)
+            store.record_run(result, started)
+            return result
+        except Exception as exc:                                # nieoczekiwane
+            result.status = "blad"
+            result.detail = f"nieoczekiwany błąd (ncourt-api): {exc}"
+            log.exception("[ms] przebieg przerwany (ncourt-api)")
+            store.record_run(result, started)
+            return result
+
+        result.pages = 1
+        known = store.known_ids("ms", ids)
+        new_ids = list(dict.fromkeys(i for i in ids if i not in known))[:limit]
+        result.seen = len(new_ids)
+
+        _fetch_and_store_each(registry, store, "ms", new_ids, result)
+
+        store.record_run(result, started)
+        log.info("[ms] (import wsadowy od %s) obejrzano %s, nowych %s (%s)",
+                 since, result.seen, result.added, result.status)
+        return result
+    finally:
+        if own_store:
+            store.close()
+        if own_registry:
+            registry.close()
 
 
 def run_once(cfg: Config, registry: Registry | None = None,
