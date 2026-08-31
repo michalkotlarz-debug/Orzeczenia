@@ -410,6 +410,35 @@ class Store:
     def delete_document(self, source: str, doc_id: str) -> None:
         self._run("DELETE FROM orzeczenia WHERE source = ? AND doc_id = ?", [source, doc_id])
 
+    def duplicate_groups(self, source: str = "") -> list[dict[str, Any]]:
+        """Grupy już zaimportowanych wpisów o tej samej sygnaturze/sądzie/dacie
+        orzeczenia/dacie publikacji, których jest więcej niż jedna - kandydaci
+        do jednorazowego wstecznego scalenia par wyrok+uzasadnienie zapisanych
+        PRZED wprowadzeniem scalania na bieżąco (patrz
+        `obserwator.merge_existing_duplicates`)."""
+        where = "WHERE source = ?" if source else ""
+        params = [source] if source else []
+        return self._rows(
+            f"SELECT source, signature, court, judgment_date, publication_date, "
+            f"COUNT(*) AS n FROM orzeczenia {where} "
+            f"GROUP BY source, signature, court, judgment_date, publication_date "
+            f"HAVING COUNT(*) > 1 AND signature IS NOT NULL AND court IS NOT NULL "
+            f"AND judgment_date IS NOT NULL",
+            params)
+
+    def rows_for_group(self, source: str, signature: str, court: str,
+                       judgment_date: str, publication_date: str | None) -> list[dict[str, Any]]:
+        """Pełne wiersze jednej grupy zwróconej przez `duplicate_groups`."""
+        if publication_date is None:
+            sql = ("SELECT * FROM orzeczenia WHERE source = ? AND signature = ? "
+                   "AND court = ? AND judgment_date = ? AND publication_date IS NULL")
+            params = [source, signature, court, judgment_date]
+        else:
+            sql = ("SELECT * FROM orzeczenia WHERE source = ? AND signature = ? "
+                   "AND court = ? AND judgment_date = ? AND publication_date = ?")
+            params = [source, signature, court, judgment_date, publication_date]
+        return [self._decode(r) for r in self._rows(sql, params)]
+
     def upsert_documents(self, docs: list[dict[str, Any]]) -> int:
         """Zapisuje pełne dokumenty (wynik `Source.document()`). W przeciwieństwie
         do `upsert()` nadpisuje też treść już znanych pozycji - re-import może

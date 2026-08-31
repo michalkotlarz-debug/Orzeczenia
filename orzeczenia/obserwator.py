@@ -322,6 +322,47 @@ def import_ms_batch(cfg: Config, registry: Registry | None = None, store: Store 
             registry.close()
 
 
+def merge_existing_duplicates(cfg: Config, store: Store | None = None,
+                              source: str = "ms") -> dict[str, int]:
+    """Jednorazowe (ale bezpieczne do wielokrotnego uruchomienia) porządkowanie:
+    scala pary wyrok+uzasadnienie, które trafiły do bazy jako DWA osobne rekordy
+    zanim `_fetch_and_store_each` zaczął je scalać na bieżąco (patrz backlog w
+    planie tej sesji). Grupa uznawana jest za bezpieczną do scalenia tylko gdy
+    ma dokładnie dwa wiersze - jeden typu "uzasadnienie", drugi właściwe
+    rozstrzygnięcie; grupy, które się nie kwalifikują (np. dwa razy ten sam typ -
+    prawdziwy podwójny import, nie ta sytuacja), są pomijane i logowane do
+    ręcznego przejrzenia, żeby nic nie zniknęło przez pomyłkę."""
+    own_store = store is None
+    store = store or Store(cfg.store.url, cfg.store.keep_days)
+    stats = {"grup": 0, "scalonych": 0, "pominietych_niejednoznacznych": 0}
+    try:
+        groups = store.duplicate_groups(source)
+        stats["grup"] = len(groups)
+        for g in groups:
+            rows = store.rows_for_group(g["source"], g["signature"], g["court"],
+                                        g["judgment_date"], g["publication_date"])
+            uzas_rows = [r for r in rows if r.get("doc_type") == "uzasadnienie"]
+            ruling_rows = [r for r in rows if r.get("doc_type") in _RULING_DOC_TYPES]
+            if len(rows) == 2 and len(uzas_rows) == 1 and len(ruling_rows) == 1:
+                merged, absorbed_id = _merge_wyrok_uzasadnienie(uzas_rows[0], ruling_rows[0])
+                store.upsert_documents([merged])
+                store.delete_document(source, absorbed_id)
+                store.mark_skipped(
+                    source, absorbed_id,
+                    f"uzasadnienie scalone z rozstrzygnięciem {merged.get('doc_id')} (backfill)")
+                stats["scalonych"] += 1
+                log.info("[%s] scalono %s: %s + %s -> %s", source, g["signature"],
+                         ruling_rows[0]["doc_id"], uzas_rows[0]["doc_id"], merged.get("doc_id"))
+            else:
+                stats["pominietych_niejednoznacznych"] += 1
+                log.warning("[%s] grupa niejednoznaczna, pominięto (%s wierszy): %s %s",
+                           source, len(rows), g["signature"], [r["doc_id"] for r in rows])
+        return stats
+    finally:
+        if own_store:
+            store.close()
+
+
 def run_once(cfg: Config, registry: Registry | None = None,
              store: Store | None = None) -> list[RunResult]:
     """Jeden pełny przebieg po wszystkich serwisach oznaczonych `poll: true`."""

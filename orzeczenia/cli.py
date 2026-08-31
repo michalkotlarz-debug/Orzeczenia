@@ -126,6 +126,27 @@ def archiwizuj_ms(
     raise typer.Exit(0 if r.status in ("ok", "przerwano") else 1)
 
 
+@app.command("scal-duplikaty")
+def scal_duplikaty(
+    source: str = typer.Option("ms", "--source", help="Które źródło porządkować"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+    config: Path = typer.Option("config.yaml", "--config", "-c"),
+):
+    """Jednorazowe wsteczne porządkowanie: scala pary wyrok+uzasadnienie, które
+    trafiły do bazy jako dwa osobne rekordy PRZED wprowadzeniem scalania na
+    bieżąco w obserwatorze. Bezpieczne uruchomić wielokrotnie - już scalone
+    grupy nie pojawią się drugi raz.
+    """
+    logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO,
+                        format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
+                        stream=sys.stdout)
+    from .obserwator import merge_existing_duplicates
+    cfg = load_config(config)
+    stats = merge_existing_duplicates(cfg, source=source)
+    typer.echo(f"grup zdublowanych: {stats['grup']}  scalonych: {stats['scalonych']}  "
+               f"pominiętych (niejednoznacznych): {stats['pominietych_niejednoznacznych']}")
+
+
 def _redact_url(url: str) -> str:
     """Adres bazy bez hasła - to trafia na ekran/w logi, hasło nie powinno."""
     from urllib.parse import urlsplit, urlunsplit
