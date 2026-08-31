@@ -69,6 +69,44 @@ with tempfile.TemporaryDirectory() as tmp:
     store.close()
 
 # ----------------------------------------------------------------------
+print("\n== search_advanced / count_advanced_by_source ==")
+with tempfile.TemporaryDirectory() as tmp:
+    store = Store(f"sqlite:///{tmp}/test.sqlite3", keep_days=400)
+    d1 = doc("D1", "wyrok", signature="II K 971/25", full_text="treść 1",
+             judges=[{"name": "Jan Kowalski", "role": "przewodniczący"}],
+             legal_basis="art. 5 k.c.", judgment_date="2025-05-01",
+             publication_date="2025-05-10")
+    d2 = doc("D2", "wyrok", signature="III K 5/26", full_text="treść 2",
+             judges=[{"name": "Anna Nowak", "role": "przewodniczący"}],
+             legal_basis="art. 172 k.c.", judgment_date="2026-01-15",
+             publication_date="2026-01-20")
+    store.upsert_documents([d1, d2])
+
+    check("bez żadnego kryterium nic nie zwraca (jak portal przy pustym)",
+         store.search_advanced(), ([], 0))
+
+    rows, total = store.search_advanced(signature="II K 971")
+    check("filtr po sygnaturze (częściowej)", [r["doc_id"] for r in rows], ["D1"])
+    check("licznik dla filtra po sygnaturze", total, 1)
+
+    rows, _ = store.search_advanced(judge="Kowalski")
+    check("filtr po sędzim (przez JSON judges)", [r["doc_id"] for r in rows], ["D1"])
+
+    rows, _ = store.search_advanced(legal_basis="172")
+    check("filtr po podstawie prawnej", [r["doc_id"] for r in rows], ["D2"])
+
+    rows, _ = store.search_advanced(date_field="judgment", date_from="2026-01-01")
+    check("filtr po dacie orzeczenia od", [r["doc_id"] for r in rows], ["D2"])
+
+    rows, _ = store.search_advanced(date_field="publication", date_to="2025-12-31")
+    check("filtr po dacie publikacji do", [r["doc_id"] for r in rows], ["D1"])
+
+    counts = store.count_advanced_by_source(signature="K")
+    check("liczniki per źródło dla filtra", counts, {"ms": 2})
+
+    store.close()
+
+# ----------------------------------------------------------------------
 print("\n== find_sibling / delete_document ==")
 with tempfile.TemporaryDirectory() as tmp:
     store = Store(f"sqlite:///{tmp}/test.sqlite3", keep_days=400)

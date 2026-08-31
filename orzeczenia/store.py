@@ -563,6 +563,105 @@ class Store:
                 "GROUP BY source", [like, like, like])
         return {r["source"]: r["n"] for r in rows}
 
+    def _advanced_where(self, *, phrase: str, source: str, signature: str, judge: str,
+                        legal_basis: str, thematic: str, date_field: str,
+                        date_from: str, date_to: str) -> tuple[list[str], list[Any], str]:
+        """Buduje WHERE dla `search_advanced`/`count_advanced_by_source` - te same
+        filtry, których dziś nie umie `search_fulltext` (sygnatura, sędzia,
+        podstawa prawna, hasło, zakres dat), więc wyszukiwanie z nimi omijało
+        własną bazę w całości i szło tylko na żywo (patrz `web/app.py:_search`)."""
+        where: list[str] = []
+        params: list[Any] = []
+        if source:
+            where.append("source = ?")
+            params.append(source)
+        if signature := squash(signature):
+            where.append("signature LIKE ?")
+            params.append(f"%{signature}%")
+        if judge := squash(judge):
+            # `judges` to zserializowany JSON ([{"name":...,"role":...}]) - LIKE po
+            # surowym tekście wystarcza do dopasowania nazwiska, bez potrzeby
+            # JSONB-owych operatorów (SQLite go nie ma, a to i tak zwykły tekst).
+            where.append("judges LIKE ?")
+            params.append(f"%{judge}%")
+        if legal_basis := squash(legal_basis):
+            where.append("legal_basis LIKE ?")
+            params.append(f"%{legal_basis}%")
+        if thematic := squash(thematic):
+            where.append("thematic LIKE ?")
+            params.append(f"%{thematic}%")
+        date_col = "publication_date" if date_field == "publication" else "judgment_date"
+        if d := _as_iso_date(date_from):
+            where.append(f"{date_col} >= ?")
+            params.append(d)
+        if d := _as_iso_date(date_to):
+            where.append(f"{date_col} <= ?")
+            params.append(d)
+        phrase = squash(phrase)
+        if phrase:
+            if self.is_pg:
+                where.append("search_vector @@ plainto_tsquery('simple', unaccent(?))")
+                params.append(phrase)
+            else:
+                like = f"%{phrase}%"
+                where.append("(full_text LIKE ? OR signature LIKE ? OR sentencja LIKE ?)")
+                params.extend([like, like, like])
+        return where, params, phrase
+
+    def search_advanced(self, *, phrase: str = "", source: str = "", signature: str = "",
+                        judge: str = "", legal_basis: str = "", thematic: str = "",
+                        date_field: str = "judgment", date_from: str = "", date_to: str = "",
+                        sort: str = "relevance", limit: int = 20,
+                        offset: int = 0) -> tuple[list[dict[str, Any]], int]:
+        """Jak `search_fulltext`, ale obsługuje też pozostałe filtry z formularza
+        (sygnatura, sędzia, podstawa prawna, hasło, zakres dat) - dzięki temu
+        wyszukiwanie z filtrami też czyta najpierw z własnej bazy zamiast zawsze
+        pytać portal na żywo. Bez ŻADNEGO kryterium nie zwraca nic (tak samo jak
+        portal źródłowy przy pustym zapytaniu)."""
+        where, params, phrase = self._advanced_where(
+            phrase=phrase, source=source, signature=signature, judge=judge,
+            legal_basis=legal_basis, thematic=thematic, date_field=date_field,
+            date_from=date_from, date_to=date_to)
+        if not where:
+            return [], 0
+        where_sql = " AND ".join(where)
+
+        date_col = "publication_date" if date_field == "publication" else "judgment_date"
+        order = {"date_desc": "judgment_date DESC", "date_asc": "judgment_date ASC",
+                 "pub_desc": "publication_date DESC"}.get(sort, f"{date_col} DESC")
+
+        total = self._rows(
+            f"SELECT COUNT(*) AS n FROM orzeczenia WHERE {where_sql}", params)[0]["n"]
+        if phrase and self.is_pg and sort == "relevance":
+            order = "rank DESC, judgment_date DESC"
+            rows = self._rows(
+                f"SELECT *, ts_rank(search_vector, "
+                f"plainto_tsquery('simple', unaccent(?))) AS rank "
+                f"FROM orzeczenia WHERE {where_sql} ORDER BY {order} LIMIT ? OFFSET ?",
+                [phrase, *params, int(limit), int(offset)])
+        else:
+            rows = self._rows(
+                f"SELECT * FROM orzeczenia WHERE {where_sql} "
+                f"ORDER BY {order} LIMIT ? OFFSET ?",
+                [*params, int(limit), int(offset)])
+        return [self._decode(r) for r in rows], int(total)
+
+    def count_advanced_by_source(self, **kwargs: Any) -> dict[str, int]:
+        """Jak `count_fulltext_by_source`, ale dla `search_advanced` - liczniki
+        per źródło na zakładkach strony wyników, gdy nie wybrano jednego źródła."""
+        kwargs.pop("source", None)
+        where, params, _ = self._advanced_where(source="", **{
+            k: kwargs.get(k, "") for k in
+            ("phrase", "signature", "judge", "legal_basis", "thematic",
+             "date_field", "date_from", "date_to")})
+        if not where:
+            return {}
+        where_sql = " AND ".join(where)
+        rows = self._rows(
+            f"SELECT source, COUNT(*) AS n FROM orzeczenia WHERE {where_sql} "
+            f"GROUP BY source", params)
+        return {r["source"]: r["n"] for r in rows}
+
     # ------------------------------------------------------------------
     def latest(self, limit: int = 20, source: str = "", since: str = "") -> list[dict[str, Any]]:
         sql = "SELECT * FROM orzeczenia WHERE 1=1"

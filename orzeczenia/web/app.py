@@ -26,7 +26,7 @@ from ..config import load_config
 from ..format import date_pl, plural_pl
 from ..http import RateLimited, SourceUnavailable
 from ..sources import Query, Registry
-from ..sources.base import SearchPage
+from ..sources.base import Hit, SearchPage
 from ..store import Store
 
 log = logging.getLogger("orzecznik.web")
@@ -96,7 +96,14 @@ templates.env.filters["datepl"] = date_pl
 def _qs(params: dict[str, Any], **override: Any) -> str:
     from urllib.parse import urlencode
     merged = {k: v for k, v in params.items() if v not in (None, "")}
-    merged.update({k: v for k, v in override.items() if v not in (None, "")})
+    for k, v in override.items():
+        if v in (None, ""):
+            # Pusta wartość override'u ma USUNĄĆ ten filtr (np. zakładka
+            # "Wszystkie" czyści "source") - poprzednio taką wartość po
+            # cichu pomijano, więc istniejący filtr nigdy nie znikał.
+            merged.pop(k, None)
+        else:
+            merged[k] = v
     return urlencode(merged)
 
 
@@ -130,8 +137,9 @@ def _search(query: Query, page: int, source: str,
     szybciej i bez obciążania portalu; gdy nic tam nie ma (jeszcze niezaimportowane
     albo baza niedostępna), wracamy do dzisiejszego zachowania: pytamy na żywo."""
     per_page = _clean_per_page(per_page)
+    store = get_store()
+
     if _is_simple_phrase(query) and query.sort == "relevance":
-        store = get_store()
         if store is not None:
             rows, total = store.search_fulltext(
                 query.phrase, source=source, limit=per_page, offset=(page - 1) * per_page)
@@ -141,7 +149,48 @@ def _search(query: Query, page: int, source: str,
                 res.totals = ({source: total} if source
                               else store.count_fulltext_by_source(query.phrase))
                 return res, True
-    return registry.search(query, page=page, only=source, per_page=per_page), False
+        return registry.search(query, page=page, only=source, per_page=per_page), False
+
+    # Zapytania z filtrami (sygnatura/sędzia/podstawa prawna/hasło/zakres dat) -
+    # dotychczas szły WYŁĄCZNIE na żywo, więc awaria/blokada portalu oznaczała
+    # zero wyników, mimo że własna baza mogła już mieć pasujące pozycje.
+    # Czytamy więc najpierw z bazy i ZAWSZE dokładamy to, co ona ma, nawet gdy
+    # portal później zawiedzie - baza nie znika z wyniku z powodu błędu na żywo.
+    db_hits: list[Hit] = []
+    db_totals: dict[str, int] = {}
+    if store is not None and not query.is_empty():
+        rows, total = store.search_advanced(
+            phrase=query.phrase, source=source, signature=query.signature,
+            judge=query.judge, legal_basis=query.legal_basis, thematic=query.thematic,
+            date_field=query.date_field, date_from=query.date_from, date_to=query.date_to,
+            sort=query.sort, limit=per_page, offset=(page - 1) * per_page)
+        db_hits = [Store.to_hit(r) for r in rows]
+        if db_hits:
+            db_totals = ({source: total} if source else
+                        store.count_advanced_by_source(
+                            phrase=query.phrase, signature=query.signature, judge=query.judge,
+                            legal_basis=query.legal_basis, thematic=query.thematic,
+                            date_field=query.date_field, date_from=query.date_from,
+                            date_to=query.date_to))
+
+    if len(db_hits) >= per_page:
+        # Strona w całości pokryta własną bazą - nie ma potrzeby pytać na żywo.
+        return SearchPage(hits=db_hits[:per_page], totals=db_totals,
+                          page=page, per_page=per_page), True
+
+    res = registry.search(query, page=page, only=source, per_page=per_page)
+    known = {(h.source, h.doc_id) for h in res.hits}
+    live_count = len(res.hits)
+    for h in db_hits:
+        if (h.source, h.doc_id) not in known:
+            res.hits.append(h)
+            known.add((h.source, h.doc_id))
+    res.hits = res.hits[:per_page]
+    for k, v in db_totals.items():
+        res.totals[k] = max(res.totals.get(k, 0), v)
+    # "z naszego indeksu" tylko gdy na żywo faktycznie nic nowego nie doszło -
+    # w pozostałych przypadkach etykieta "na żywo" jest bliższa prawdzie.
+    return res, bool(db_hits) and live_count == 0
 
 
 # ----------------------------------------------------------------------
