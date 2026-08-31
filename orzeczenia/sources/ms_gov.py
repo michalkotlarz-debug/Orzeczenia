@@ -18,14 +18,16 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from typing import Any
 
 from bs4 import BeautifulSoup
 
-from ..parse.common import (clean_person, court_level, detect_doc_type, detect_doc_types,
-                            extract_panel, html_text, normalize_person, normalize_signature,
+from ..http import RateLimited, SourceUnavailable
+from ..parse.common import (clean_person, combine_wyrok_uzasadnienie, court_level,
+                            detect_doc_type, detect_doc_types, extract_panel, html_text,
+                            is_uzasadnienie_pair, normalize_person, normalize_signature,
                             parse_date, sort_panel, split_sentencja_uzasadnienie, squash,
                             strip_accents)
 from .base import Hit, Query
@@ -111,7 +113,61 @@ class MsSource:
     # ------------------------------------------------------------------
     def search(self, q: Query, page: int = 1) -> tuple[list[Hit], int]:
         html = self.http.get(self.search_url(q, page))
-        return self.parse_results(html), self.parse_count(html)
+        hits = self._filter_and_merge_hits(self.parse_results(html))
+        return hits, self.parse_count(html)
+
+    def _has_content(self, doc_id: str) -> bool:
+        """Sprawdza (i buforuje przez PoliteClient - kolejne otwarcie tej samej
+        pozycji jest już darmowe), czy /content/ dla tej pozycji w ogóle coś
+        zwraca. Część orzeczeń portal trwale odmawia wydać (`IX U 1515/12`),
+        mimo że pojawiają się na liście wyników - stamtąd samą tego nie widać."""
+        try:
+            self.http.get(self.content_url(doc_id), ttl=self.http.cache_cfg.document_ttl_seconds)
+            return True
+        except RateLimited:
+            raise
+        except SourceUnavailable:
+            return False
+
+    def _filter_and_merge_hits(self, hits: list[Hit]) -> list[Hit]:
+        """1) odsiewa pozycje bez treści (`_has_content`) - nie prezentujemy
+        orzeczeń, których nie da się otworzyć; 2) dla tego, co zostało, scala
+        pary wyrok+uzasadnienie opublikowane jako dwa osobne dokumenty tej samej
+        sprawy (ta sama sygnatura/sąd/data orzeczenia/data publikacji - patrz
+        `parse.common.is_uzasadnienie_pair`, ten sam mechanizm co przy imporcie
+        w `obserwator.py`); 3) wynik trafia do prezentacji na stronie.
+
+        Sprawdzone na żywo: portal potrafi oddać HTTP 400 na /content/ dla
+        KAŻDEJ pozycji na stronie naraz, także dla dokumentów opublikowanych
+        tego samego dnia - to nie brak treści u wszystkich naraz, tylko
+        chwilowa blokada/przeciążenie. Żeby to nie zamieniało się w fałszywe
+        "brak wyników", całkowity brak treści na całej (niepustej) stronie
+        wyników zgłaszamy jak każdą inną niedostępność serwisu, zamiast po
+        cichu zwracać pustą listę."""
+        verified = [h for h in hits if self._has_content(h.doc_id)]
+        if hits and not verified:
+            raise SourceUnavailable(
+                "portal nie oddał treści żadnej z pozycji na tej stronie wyników - "
+                "prawdopodobnie chwilowo ogranicza dostęp, spróbuj ponownie później")
+
+        groups: dict[tuple, list[Hit]] = {}
+        order: list[tuple] = []
+        for h in verified:
+            key = (h.signature, h.court, h.judgment_date, h.publication_date)
+            if key not in groups:
+                order.append(key)
+            groups.setdefault(key, []).append(h)
+
+        out: list[Hit] = []
+        for key in order:
+            group = groups[key]
+            if len(group) == 2 and is_uzasadnienie_pair(group[0].doc_type, group[1].doc_type):
+                a, b = group
+                wyrok, uzas = (a, b) if a.doc_type != "uzasadnienie" else (b, a)
+                out.append(replace(wyrok, excerpt=wyrok.excerpt or uzas.excerpt))
+            else:
+                out.extend(group)
+        return out
 
     @staticmethod
     def parse_count(html: str) -> int:
@@ -154,15 +210,77 @@ class MsSource:
         return out
 
     # ------------------------------------------------------------------
+    def _sibling_hit(self, doc_id: str, own_type: str | None, signature: str | None,
+                     court: str | None, judgment_date: str | None,
+                     publication_date: str | None) -> Hit | None:
+        """Szuka - przez wyszukiwanie po samej sygnaturze - drugiej połowy pary
+        wyrok+uzasadnienie opublikowanej jako osobny dokument tej samej sprawy
+        (ta sama sygnatura/sąd/data orzeczenia/data publikacji). Używane przez
+        `document()`, gdy własna treść jest niedostępna albo gdy ten dokument
+        sam jest tylko uzasadnieniem."""
+        if not signature or not court or not judgment_date:
+            return None
+        try:
+            html = self.http.get(self.search_url(Query(signature=signature), 1))
+        except (RateLimited, SourceUnavailable):
+            return None
+        for h in self.parse_results(html):
+            if h.doc_id == doc_id or h.court != court:
+                continue
+            if h.judgment_date != judgment_date or h.publication_date != publication_date:
+                continue
+            if is_uzasadnienie_pair(own_type, h.doc_type):
+                return h
+        return None
+
     def document(self, doc_id: str) -> dict[str, Any]:
         ttl = self.http.cache_cfg.document_ttl_seconds
         details = self.http.get(self.details_url(doc_id), ttl=ttl)
-        # Dla części starszych orzeczeń (ok. 2013-2015) portal trwale zwraca
-        # błąd na /content/, mimo że /details/ (metryka) działa poprawnie -
-        # niech to jak każda inna niedostępność treści przerwie pobranie
-        # (patrz http.PoliteClient.get) zamiast pokazywać dokument bez treści.
-        content = self.http.get(self.content_url(doc_id), ttl=ttl)
-        return self.parse_document(doc_id, details, content)
+        meta = self._parse_details(details)
+        title = meta.get("_title", "")
+        own_type = detect_doc_type(self._type_from_title(title))
+        signature = meta.get("sygnatura") or self._signature_from_title(title)
+        court = meta.get("sad") or meta.get("sąd")
+        judgment_date = parse_date(meta.get("data orzeczenia"))
+        publication_date = parse_date(meta.get("data publikacji"))
+
+        # Dla części orzeczeń (najczęściej starsze, ale nie tylko) portal
+        # trwale zwraca błąd na /content/, mimo że /details/ działa poprawnie.
+        try:
+            own_content: str | None = self.http.get(self.content_url(doc_id), ttl=ttl)
+        except SourceUnavailable:
+            own_content = None
+
+        # 1) własnej treści brak -> szukamy drugiej połowy pary; 2) własna
+        # treść jest, ale to samo uzasadnienie -> dociągamy wyrok tej samej
+        # sprawy, żeby pokazać całość od razu (zamiast dwóch osobnych stron).
+        sib = None
+        if own_content is None or own_type == "uzasadnienie":
+            sib = self._sibling_hit(doc_id, own_type, signature, court,
+                                    judgment_date, publication_date)
+
+        sib_details = sib_content = None
+        if sib is not None:
+            try:
+                sib_details = self.http.get(self.details_url(sib.doc_id), ttl=ttl)
+                sib_content = self.http.get(self.content_url(sib.doc_id), ttl=ttl)
+            except SourceUnavailable:
+                sib_details = sib_content = None
+
+        if own_content is None and sib_content is None:
+            # Ani ten dokument, ani jego ewentualna druga połowa nie mają
+            # treści - zgodnie z wytycznymi w ogóle go nie prezentujemy.
+            raise SourceUnavailable(f"{doc_id}: treść niedostępna w źródle")
+
+        if own_content is None:
+            return self.parse_document(sib.doc_id, sib_details, sib_content)
+
+        doc = self.parse_document(doc_id, details, own_content)
+        if sib_content is not None:
+            sib_doc = self.parse_document(sib.doc_id, sib_details, sib_content)
+            wyrok, uzas = (doc, sib_doc) if own_type != "uzasadnienie" else (sib_doc, doc)
+            return combine_wyrok_uzasadnienie(wyrok, uzas)
+        return doc
 
     def parse_document(self, doc_id: str, details_html: str, content_html: str) -> dict[str, Any]:
         from ..http import looks_blocked

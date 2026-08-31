@@ -161,6 +161,58 @@ def detect_doc_type(*candidates: str | None) -> str | None:
 
 
 # ----------------------------------------------------------------------
+# scalanie wyroku z uzasadnieniem opublikowanych jako dwa osobne dokumenty
+# (patrz orzeczenia/obserwator.py, orzeczenia/sources/ms_gov.py - wspólne dla
+# importu do własnej bazy i dla wyszukiwania na żywo)
+# ----------------------------------------------------------------------
+RULING_DOC_TYPES = {"wyrok", "postanowienie", "nakaz zapłaty", "zarządzenie", "ugoda"}
+
+
+def is_uzasadnienie_pair(a_doc_type: str | None, b_doc_type: str | None) -> bool:
+    """Portal MS czasem publikuje wyrok/postanowienie i jego uzasadnienie jako
+    dwa osobne dokumenty (sprawdzone na żywo na sygnaturze „II K 971/25") -
+    ta sama sygnatura/sąd/data orzeczenia/data publikacji, ale jeden ma typ
+    "uzasadnienie", drugi właściwy typ rozstrzygnięcia."""
+    return (a_doc_type == "uzasadnienie") != (b_doc_type == "uzasadnienie") and (
+        a_doc_type in RULING_DOC_TYPES or b_doc_type in RULING_DOC_TYPES)
+
+
+def combine_wyrok_uzasadnienie(wyrok: dict, uzas: dict) -> dict:
+    """Łączy treść dwóch już zidentyfikowanych ról (`wyrok` = rozstrzygnięcie,
+    zostaje jako kanoniczny rekord; `uzas` = uzasadnienie, zostaje wchłonięte)
+    w jeden dokument. Oczekuje słowników w kształcie zwracanym przez
+    `Source.document()` / odczytanych ze `Store` (te same nazwy pól)."""
+    merged = dict(wyrok)
+
+    own_uzas = wyrok.get("uzasadnienie") or ""
+    uzas_text = uzas.get("uzasadnienie") or uzas.get("full_text") or ""
+    if uzas_text and uzas_text not in own_uzas:
+        merged["uzasadnienie"] = (own_uzas + "\n\n" + uzas_text).strip() if own_uzas else uzas_text
+
+    own_full = wyrok.get("full_text") or ""
+    parts = [own_full] if own_full else []
+    if uzas.get("full_text") and uzas["full_text"] not in own_full:
+        parts.append(uzas["full_text"])
+    merged["full_text"] = "\n\n".join(parts) or None
+
+    merged["thematic"] = list(dict.fromkeys(
+        (wyrok.get("thematic") or []) + (uzas.get("thematic") or [])))
+    seen_names = {(j.get("name") or "").lower() for j in (wyrok.get("judges") or [])}
+    judges = list(wyrok.get("judges") or [])
+    for j in uzas.get("judges") or []:
+        name = (j.get("name") or "").lower()
+        if name and name not in seen_names:
+            seen_names.add(name)
+            judges.append(j)
+    merged["judges"] = judges
+    merged["legal_basis"] = wyrok.get("legal_basis") or uzas.get("legal_basis")
+    merged["importance"] = wyrok.get("importance") or uzas.get("importance")
+    merged["doc_type_raw"] = wyrok.get("doc_type_raw") or uzas.get("doc_type_raw")
+    merged.pop("excerpt", None)   # dociągnie się od nowa z pełnej (scalonej) treści
+    return merged
+
+
+# ----------------------------------------------------------------------
 # osoby (sędziowie / arbitrzy)
 # ----------------------------------------------------------------------
 TITLE_NOISE = re.compile(

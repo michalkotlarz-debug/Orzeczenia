@@ -19,6 +19,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from .config import Config
 from .http import RateLimited, SourceUnavailable
+from .parse.common import RULING_DOC_TYPES, combine_wyrok_uzasadnienie, is_uzasadnienie_pair
 from .sources.base import Hit, Query
 from .sources.ms_ncourt_api import NcourtApiSource
 from .sources.registry import Registry
@@ -96,57 +97,11 @@ def _discover_ids_ms(registry: Registry, store: Store, cfg: Config,
     return ids
 
 
-# Typy dokumentów, które są SAMODZIELNYM rozstrzygnięciem (w przeciwieństwie do
-# "uzasadnienie" - patrz `_is_uzasadnienie_pair`/`_merge_wyrok_uzasadnienie` niżej).
-_RULING_DOC_TYPES = {"wyrok", "postanowienie", "nakaz zapłaty", "zarządzenie", "ugoda"}
-
-
 def _is_uzasadnienie_pair(a: dict, b: dict) -> bool:
-    """Portal MS czasem publikuje wyrok/postanowienie i jego uzasadnienie jako
-    dwa osobne dokumenty (sprawdzone na żywo na sygnaturze „II K 971/25") -
-    ta sama sygnatura/sąd/data orzeczenia/data publikacji (dopasowane wcześniej
-    przez `Store.find_sibling`), ale jeden ma tytuł "uzasadnienie", drugi
-    właściwy typ rozstrzygnięcia."""
-    ta, tb = a.get("doc_type"), b.get("doc_type")
-    return (ta == "uzasadnienie") != (tb == "uzasadnienie") and (
-        ta in _RULING_DOC_TYPES or tb in _RULING_DOC_TYPES)
-
-
-def _combine_wyrok_uzasadnienie(wyrok: dict, uzas: dict) -> dict:
-    """Łączy treść dwóch już zidentyfikowanych ról (`wyrok` = rozstrzygnięcie,
-    zostaje jako kanoniczny rekord; `uzas` = uzasadnienie, zostaje wchłonięte)
-    w jeden dokument. Wspólna dla automatycznego wykrywania pary
-    (`_merge_wyrok_uzasadnienie`) i ręcznego wskazania (`merge_specific_pair`,
-    gdy automatyczne rozpoznawanie typu z tytułu pomyliło etykietę - patrz
-    sygnatura „II K 771/15", zgłoszone przez użytkownika)."""
-    merged = dict(wyrok)
-
-    own_uzas = wyrok.get("uzasadnienie") or ""
-    uzas_text = uzas.get("uzasadnienie") or uzas.get("full_text") or ""
-    if uzas_text and uzas_text not in own_uzas:
-        merged["uzasadnienie"] = (own_uzas + "\n\n" + uzas_text).strip() if own_uzas else uzas_text
-
-    own_full = wyrok.get("full_text") or ""
-    parts = [own_full] if own_full else []
-    if uzas.get("full_text") and uzas["full_text"] not in own_full:
-        parts.append(uzas["full_text"])
-    merged["full_text"] = "\n\n".join(parts) or None
-
-    merged["thematic"] = list(dict.fromkeys(
-        (wyrok.get("thematic") or []) + (uzas.get("thematic") or [])))
-    seen_names = {(j.get("name") or "").lower() for j in (wyrok.get("judges") or [])}
-    judges = list(wyrok.get("judges") or [])
-    for j in uzas.get("judges") or []:
-        name = (j.get("name") or "").lower()
-        if name and name not in seen_names:
-            seen_names.add(name)
-            judges.append(j)
-    merged["judges"] = judges
-    merged["legal_basis"] = wyrok.get("legal_basis") or uzas.get("legal_basis")
-    merged["importance"] = wyrok.get("importance") or uzas.get("importance")
-    merged["doc_type_raw"] = wyrok.get("doc_type_raw") or uzas.get("doc_type_raw")
-    merged.pop("excerpt", None)   # dociągnie się od nowa z pełnej (scalonej) treści
-    return merged
+    """Wrapper na `parse.common.is_uzasadnienie_pair` dla dwóch pełnych
+    dokumentów (nie samych typów) - dopasowanie sygnatury/sądu/dat robi
+    wcześniej `Store.find_sibling`."""
+    return is_uzasadnienie_pair(a.get("doc_type"), b.get("doc_type"))
 
 
 def _merge_wyrok_uzasadnienie(a: dict, b: dict) -> tuple[dict, str]:
@@ -154,7 +109,7 @@ def _merge_wyrok_uzasadnienie(a: dict, b: dict) -> tuple[dict, str]:
     doc_id rozstrzygnięcia (nie uzasadnienia). Zwraca (scalony_dokument,
     doc_id_wchłoniętego_uzasadnienia) - wywołujący usuwa/pomija ten drugi."""
     wyrok, uzas = (a, b) if a.get("doc_type") != "uzasadnienie" else (b, a)
-    return _combine_wyrok_uzasadnienie(wyrok, uzas), uzas.get("doc_id")
+    return combine_wyrok_uzasadnienie(wyrok, uzas), uzas.get("doc_id")
 
 
 def merge_specific_pair(store: Store, source: str, keep_doc_id: str, absorb_doc_id: str) -> bool:
@@ -171,7 +126,7 @@ def merge_specific_pair(store: Store, source: str, keep_doc_id: str, absorb_doc_
     absorb_row = store.get_document(source, absorb_doc_id)
     if not keep_row or not absorb_row:
         return False
-    merged = _combine_wyrok_uzasadnienie(keep_row, absorb_row)
+    merged = combine_wyrok_uzasadnienie(keep_row, absorb_row)
     store.upsert_documents([merged])
     store.delete_document(source, absorb_doc_id)
     store.mark_skipped(source, absorb_doc_id,
@@ -374,7 +329,7 @@ def merge_existing_duplicates(cfg: Config, store: Store | None = None,
             rows = store.rows_for_group(g["source"], g["signature"], g["court"],
                                         g["judgment_date"], g["publication_date"])
             uzas_rows = [r for r in rows if r.get("doc_type") == "uzasadnienie"]
-            ruling_rows = [r for r in rows if r.get("doc_type") in _RULING_DOC_TYPES]
+            ruling_rows = [r for r in rows if r.get("doc_type") in RULING_DOC_TYPES]
             if len(rows) == 2 and len(uzas_rows) == 1 and len(ruling_rows) == 1:
                 merged, absorbed_id = _merge_wyrok_uzasadnienie(uzas_rows[0], ruling_rows[0])
                 store.upsert_documents([merged])
