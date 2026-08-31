@@ -1,0 +1,36 @@
+name: scal-duplikaty
+
+# Jednorazowe (ale bezpieczne do wielokrotnego uruchomienia) porządkowanie:
+# scala pary wyrok+uzasadnienie, które trafiły do produkcyjnej bazy jako dwa
+# osobne rekordy PRZED wprowadzeniem scalania na bieżąco w obserwatorze.
+# Uruchamiane ręcznie (workflow_dispatch), nie na harmonogramie - patrz
+# `orzeczenia.cli scal-duplikaty` / `orzeczenia/obserwator.py:merge_existing_duplicates`.
+#
+# Wymaga tego samego sekretu DATABASE_URL co archiwum-ms.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Które źródło porządkować"
+        default: "ms"
+
+jobs:
+  scal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Scal juz zaimportowane duplikaty
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python -m orzeczenia.cli scal-duplikaty --source "${{ github.event.inputs.source || 'ms' }}" -v
