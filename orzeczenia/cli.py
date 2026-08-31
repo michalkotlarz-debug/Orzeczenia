@@ -147,6 +147,60 @@ def scal_duplikaty(
                f"pominiętych (niejednoznacznych): {stats['pominietych_niejednoznacznych']}")
 
 
+@app.command("pokaz")
+def pokaz(doc_id: str, source: str = typer.Option("ms", "--source"),
+          config: Path = typer.Option("config.yaml", "--config", "-c")):
+    """Debug: pokaż kluczowe pola jednego zaimportowanego dokumentu - do
+    ręcznego sprawdzenia przed użyciem `scal-recznie`."""
+    from .store import Store
+    cfg = load_config(config)
+    store = Store(cfg.store.url, cfg.store.keep_days)
+    try:
+        d = store.get_document(source, doc_id)
+        if not d:
+            typer.echo("nie znaleziono (albo dokument bez treści)")
+            raise typer.Exit(1)
+        typer.echo(f"doc_id={d['doc_id']}  typ={d.get('doc_type')}  typ_z_tytulu={d.get('doc_type_raw')}")
+        typer.echo(f"sygnatura={d.get('signature')}  sad={d.get('court')}")
+        typer.echo(f"data_orzeczenia={d.get('judgment_date')}  data_publikacji={d.get('publication_date')}")
+        typer.echo(f"sentencja (poczatek): {(d.get('sentencja') or '(brak)')[:250]}")
+        typer.echo(f"uzasadnienie (poczatek): {(d.get('uzasadnienie') or '(brak)')[:250]}")
+        typer.echo(f"full_text (poczatek): {(d.get('full_text') or '(brak)')[:300]}")
+    finally:
+        store.close()
+
+
+@app.command("scal-recznie")
+def scal_recznie(
+    keep: str = typer.Option(..., "--keep", help="doc_id, który zostaje jako kanoniczny link"),
+    absorb: str = typer.Option(..., "--absorb", help="doc_id, którego treść dołączamy i który znika"),
+    source: str = typer.Option("ms", "--source"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+    config: Path = typer.Option("config.yaml", "--config", "-c"),
+):
+    """Ręcznie wskazane scalenie dwóch już zaimportowanych dokumentów - dla
+    przypadków, gdy automatyczne rozpoznawanie typu z tytułu nadało jednemu z
+    nich mylącą etykietę, więc `scal-duplikaty` uznał parę za niejednoznaczną i
+    ją pominął. Sprawdź najpierw oba dokumenty przez `pokaz`.
+    """
+    logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO,
+                        format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
+                        stream=sys.stdout)
+    from .obserwator import merge_specific_pair
+    from .store import Store
+    cfg = load_config(config)
+    store = Store(cfg.store.url, cfg.store.keep_days)
+    try:
+        ok = merge_specific_pair(store, source, keep, absorb)
+        if ok:
+            typer.echo(f"scalono: {absorb} -> {keep}")
+        else:
+            typer.echo("nie znaleziono jednego z dokumentów (albo bez treści) - nic nie scalono")
+        raise typer.Exit(0 if ok else 1)
+    finally:
+        store.close()
+
+
 def _redact_url(url: str) -> str:
     """Adres bazy bez hasła - to trafia na ekran/w logi, hasło nie powinno."""
     from urllib.parse import urlsplit, urlunsplit

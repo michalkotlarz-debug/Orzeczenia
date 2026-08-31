@@ -1,0 +1,33 @@
+name: admin-cli
+
+# Ogólny "właz serwisowy": ręczne uruchomienie dowolnego istniejącego polecenia
+# `orzeczenia.cli` na produkcyjnej bazie (Neon), bez potrzeby dodawania osobnego
+# workflow pliku na każdą jednorazową operację diagnostyczną/porządkową (patrz
+# `pokaz`, `scal-recznie`, `scal-duplikaty`, `baza`). Wymaga tego samego
+# sekretu DATABASE_URL co pozostałe workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      args:
+        description: "Argumenty dla `python -m orzeczenia.cli ...` (np. \"pokaz KEEP1 --source ms\")"
+        required: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Uruchom polecenie
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m orzeczenia.cli ${{ github.event.inputs.args }}

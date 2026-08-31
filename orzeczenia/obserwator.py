@@ -112,11 +112,13 @@ def _is_uzasadnienie_pair(a: dict, b: dict) -> bool:
         ta in _RULING_DOC_TYPES or tb in _RULING_DOC_TYPES)
 
 
-def _merge_wyrok_uzasadnienie(a: dict, b: dict) -> tuple[dict, str]:
-    """Scala parę wykrytą przez `_is_uzasadnienie_pair` w jeden rekord pod
-    doc_id rozstrzygnięcia (nie uzasadnienia). Zwraca (scalony_dokument,
-    doc_id_wchłoniętego_uzasadnienia) - wywołujący usuwa/pomija ten drugi."""
-    wyrok, uzas = (a, b) if a.get("doc_type") != "uzasadnienie" else (b, a)
+def _combine_wyrok_uzasadnienie(wyrok: dict, uzas: dict) -> dict:
+    """Łączy treść dwóch już zidentyfikowanych ról (`wyrok` = rozstrzygnięcie,
+    zostaje jako kanoniczny rekord; `uzas` = uzasadnienie, zostaje wchłonięte)
+    w jeden dokument. Wspólna dla automatycznego wykrywania pary
+    (`_merge_wyrok_uzasadnienie`) i ręcznego wskazania (`merge_specific_pair`,
+    gdy automatyczne rozpoznawanie typu z tytułu pomyliło etykietę - patrz
+    sygnatura „II K 771/15", zgłoszone przez użytkownika)."""
     merged = dict(wyrok)
 
     own_uzas = wyrok.get("uzasadnienie") or ""
@@ -144,7 +146,37 @@ def _merge_wyrok_uzasadnienie(a: dict, b: dict) -> tuple[dict, str]:
     merged["importance"] = wyrok.get("importance") or uzas.get("importance")
     merged["doc_type_raw"] = wyrok.get("doc_type_raw") or uzas.get("doc_type_raw")
     merged.pop("excerpt", None)   # dociągnie się od nowa z pełnej (scalonej) treści
-    return merged, uzas.get("doc_id")
+    return merged
+
+
+def _merge_wyrok_uzasadnienie(a: dict, b: dict) -> tuple[dict, str]:
+    """Scala parę wykrytą przez `_is_uzasadnienie_pair` w jeden rekord pod
+    doc_id rozstrzygnięcia (nie uzasadnienia). Zwraca (scalony_dokument,
+    doc_id_wchłoniętego_uzasadnienia) - wywołujący usuwa/pomija ten drugi."""
+    wyrok, uzas = (a, b) if a.get("doc_type") != "uzasadnienie" else (b, a)
+    return _combine_wyrok_uzasadnienie(wyrok, uzas), uzas.get("doc_id")
+
+
+def merge_specific_pair(store: Store, source: str, keep_doc_id: str, absorb_doc_id: str) -> bool:
+    """Ręcznie wskazane scalenie dwóch już zaimportowanych dokumentów - dla
+    przypadków, w których automatyczne rozpoznawanie typu z tytułu (patrz
+    `orzeczenia/parse/common.py:detect_doc_types`) nadało dokumentowi błędną
+    etykietę (np. treściowo jest to uzasadnienie, ale tytuł brzmiał tak, że
+    wykryto "zarządzenie" - zgłoszone dla sygnatury „II K 771/15"), więc
+    `_is_uzasadnienie_pair` nie rozpoznał pary automatycznie. W odróżnieniu od
+    `_merge_wyrok_uzasadnienie` role są wskazane jawnie przez wywołującego, nie
+    wykrywane z `doc_type`. `keep_doc_id` zostaje jako kanoniczny rekord/link,
+    `absorb_doc_id` znika z bazy i ląduje w `pominiete`."""
+    keep_row = store.get_document(source, keep_doc_id)
+    absorb_row = store.get_document(source, absorb_doc_id)
+    if not keep_row or not absorb_row:
+        return False
+    merged = _combine_wyrok_uzasadnienie(keep_row, absorb_row)
+    store.upsert_documents([merged])
+    store.delete_document(source, absorb_doc_id)
+    store.mark_skipped(source, absorb_doc_id,
+                       f"scalone ręcznie z {keep_doc_id} (etykieta typu z tytułu była myląca)")
+    return True
 
 
 def _fetch_and_store_each(registry: Registry, store: Store, source: str,
