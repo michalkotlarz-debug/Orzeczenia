@@ -137,18 +137,23 @@ class MsSource:
         `parse.common.is_uzasadnienie_pair`, ten sam mechanizm co przy imporcie
         w `obserwator.py`); 3) wynik trafia do prezentacji na stronie.
 
-        Sprawdzone na żywo: portal potrafi oddać HTTP 400 na /content/ dla
-        KAŻDEJ pozycji na stronie naraz, także dla dokumentów opublikowanych
-        tego samego dnia - to nie brak treści u wszystkich naraz, tylko
-        chwilowa blokada/przeciążenie. Żeby to nie zamieniało się w fałszywe
-        "brak wyników", całkowity brak treści na całej (niepustej) stronie
-        wyników zgłaszamy jak każdą inną niedostępność serwisu, zamiast po
-        cichu zwracać pustą listę."""
+        Sprawdzone na żywo (dwa różne przypadki): (a) portal potrafi oddać
+        HTTP 400 na /content/ dla KAŻDEJ pozycji strony naraz, także dla
+        dokumentów z tego samego dnia - to wygląda na chwilową blokadę/
+        przeciążenie po większej liczbie zapytań; (b) zdarza się też, że CAŁA
+        pierwsza strona wyników dla konkretnego, wąskiego zapytania trwale
+        składa się z samych orzeczeń bez treści (np. jeden sąd/rocznik ze
+        specyficznym problemem archiwizacji) - tu "spróbuj później" nic nie
+        da. Nie da się tego odróżnić z zewnątrz, więc komunikat jest celowo
+        neutralny co do przyczyny. W obu przypadkach chodzi o to samo: żeby
+        całkowity brak treści na całej (niepustej) stronie wyników zgłosić
+        jak każdą inną niedostępność serwisu, zamiast po cichu zwracać pustą
+        listę (fałszywe "brak wyników")."""
         verified = [h for h in hits if self._has_content(h.doc_id)]
         if hits and not verified:
             raise SourceUnavailable(
                 "portal nie oddał treści żadnej z pozycji na tej stronie wyników - "
-                "prawdopodobnie chwilowo ogranicza dostęp, spróbuj ponownie później")
+                "spróbuj innych filtrów, kolejnej strony, albo wróć za jakiś czas")
 
         groups: dict[tuple, list[Hit]] = {}
         order: list[tuple] = []
