@@ -27,7 +27,12 @@ concurrency:
 jobs:
   import:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # 150 nowych dokumentow to 2 zadania HTTP kazdy (details+content), ~1,2-2s
+    # odstepu miedzy zadaniami do tego samego hosta (limiter) - w praktyce
+    # zaobserwowano ok. 23 min na pelna porcje 150. Przy 25-min limicie polowa
+    # przebiegow byla ucinana tuz przed koncem (##[error]The operation was
+    # canceled) - podniesione z zapasem, zeby konczyc sie normalnie.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
