@@ -23,7 +23,6 @@
       <div class="doc-tools">
         <a class="ghost" href="/orzeczenie/{{ d.source }}/{{ d.doc_id }}/pobierz.txt">{{ icon('download','ic') }} Pobierz tekst</a>
         <button class="ghost fav" type="button" data-fav aria-pressed="false">{{ icon('heart','ic') }} <span class="lbl">Do ulubionych</span></button>
-        <a class="ghost" href="{{ d.source_url }}" target="_blank" rel="noopener">{{ icon('external','ic') }} Oryginał w portalu</a>
         {% if d.get('pdf_url') %}<a class="ghost" href="{{ d.get('pdf_url') }}" target="_blank" rel="noopener">{{ icon('download','ic') }} PDF ze źródła</a>{% endif %}
       </div>
     </header>
@@ -57,17 +56,9 @@
     </section>
     {% endif %}
     {% if not d.sentencja and not d.uzasadnienie %}
-    {% if d.full_text %}
     <section class="block"><h2>Treść</h2>
-      <div class="text">{% for para in d.full_text.split("\n") %}<p>{{ para }}</p>{% endfor %}</div>
+      <div class="text">{% for para in (d.full_text or '').split("\n") %}<p>{{ para }}</p>{% endfor %}</div>
     </section>
-    {% else %}
-    <section class="block">
-      <p class="muted">Treść tego orzeczenia nie jest dostępna w portalu źródłowym — dostępna jest
-         tylko metryka widoczna powyżej. Zobacz
-         <a href="{{ d.source_url }}" target="_blank" rel="noopener">oryginał w portalu</a>.</p>
-    </section>
-    {% endif %}
     {% endif %}
   </article>
 </div>

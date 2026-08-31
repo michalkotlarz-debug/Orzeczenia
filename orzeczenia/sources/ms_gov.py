@@ -24,7 +24,6 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
-from ..http import SourceUnavailable
 from ..parse.common import (clean_person, court_level, detect_doc_type, detect_doc_types,
                             extract_panel, html_text, normalize_person, normalize_signature,
                             parse_date, sort_panel, split_sentencja_uzasadnienie, squash,
@@ -158,14 +157,11 @@ class MsSource:
     def document(self, doc_id: str) -> dict[str, Any]:
         ttl = self.http.cache_cfg.document_ttl_seconds
         details = self.http.get(self.details_url(doc_id), ttl=ttl)
-        try:
-            content = self.http.get(self.content_url(doc_id), ttl=ttl)
-        except SourceUnavailable:
-            # Dla części starszych orzeczeń (ok. 2013-2015) portal trwale zwraca
-            # błąd na /content/, mimo że /details/ (metryka) działa poprawnie -
-            # to nie jest chwilowa awaria, więc zamiast całkiem odmawiać pokazania
-            # dokumentu, pokazujemy przynajmniej metrykę.
-            content = ""
+        # Dla części starszych orzeczeń (ok. 2013-2015) portal trwale zwraca
+        # błąd na /content/, mimo że /details/ (metryka) działa poprawnie -
+        # niech to jak każda inna niedostępność treści przerwie pobranie
+        # (patrz http.PoliteClient.get) zamiast pokazywać dokument bez treści.
+        content = self.http.get(self.content_url(doc_id), ttl=ttl)
         return self.parse_document(doc_id, details, content)
 
     def parse_document(self, doc_id: str, details_html: str, content_html: str) -> dict[str, Any]:
