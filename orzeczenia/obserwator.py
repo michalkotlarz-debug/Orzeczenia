@@ -96,6 +96,57 @@ def _discover_ids_ms(registry: Registry, store: Store, cfg: Config,
     return ids
 
 
+# Typy dokumentów, które są SAMODZIELNYM rozstrzygnięciem (w przeciwieństwie do
+# "uzasadnienie" - patrz `_is_uzasadnienie_pair`/`_merge_wyrok_uzasadnienie` niżej).
+_RULING_DOC_TYPES = {"wyrok", "postanowienie", "nakaz zapłaty", "zarządzenie", "ugoda"}
+
+
+def _is_uzasadnienie_pair(a: dict, b: dict) -> bool:
+    """Portal MS czasem publikuje wyrok/postanowienie i jego uzasadnienie jako
+    dwa osobne dokumenty (sprawdzone na żywo na sygnaturze „II K 971/25") -
+    ta sama sygnatura/sąd/data orzeczenia/data publikacji (dopasowane wcześniej
+    przez `Store.find_sibling`), ale jeden ma tytuł "uzasadnienie", drugi
+    właściwy typ rozstrzygnięcia."""
+    ta, tb = a.get("doc_type"), b.get("doc_type")
+    return (ta == "uzasadnienie") != (tb == "uzasadnienie") and (
+        ta in _RULING_DOC_TYPES or tb in _RULING_DOC_TYPES)
+
+
+def _merge_wyrok_uzasadnienie(a: dict, b: dict) -> tuple[dict, str]:
+    """Scala parę wykrytą przez `_is_uzasadnienie_pair` w jeden rekord pod
+    doc_id rozstrzygnięcia (nie uzasadnienia). Zwraca (scalony_dokument,
+    doc_id_wchłoniętego_uzasadnienia) - wywołujący usuwa/pomija ten drugi."""
+    wyrok, uzas = (a, b) if a.get("doc_type") != "uzasadnienie" else (b, a)
+    merged = dict(wyrok)
+
+    own_uzas = wyrok.get("uzasadnienie") or ""
+    uzas_text = uzas.get("uzasadnienie") or uzas.get("full_text") or ""
+    if uzas_text and uzas_text not in own_uzas:
+        merged["uzasadnienie"] = (own_uzas + "\n\n" + uzas_text).strip() if own_uzas else uzas_text
+
+    own_full = wyrok.get("full_text") or ""
+    parts = [own_full] if own_full else []
+    if uzas.get("full_text") and uzas["full_text"] not in own_full:
+        parts.append(uzas["full_text"])
+    merged["full_text"] = "\n\n".join(parts) or None
+
+    merged["thematic"] = list(dict.fromkeys(
+        (wyrok.get("thematic") or []) + (uzas.get("thematic") or [])))
+    seen_names = {(j.get("name") or "").lower() for j in (wyrok.get("judges") or [])}
+    judges = list(wyrok.get("judges") or [])
+    for j in uzas.get("judges") or []:
+        name = (j.get("name") or "").lower()
+        if name and name not in seen_names:
+            seen_names.add(name)
+            judges.append(j)
+    merged["judges"] = judges
+    merged["legal_basis"] = wyrok.get("legal_basis") or uzas.get("legal_basis")
+    merged["importance"] = wyrok.get("importance") or uzas.get("importance")
+    merged["doc_type_raw"] = wyrok.get("doc_type_raw") or uzas.get("doc_type_raw")
+    merged.pop("excerpt", None)   # dociągnie się od nowa z pełnej (scalonej) treści
+    return merged, uzas.get("doc_id")
+
+
 def _fetch_and_store_each(registry: Registry, store: Store, source: str,
                           doc_ids: list[str], result: RunResult) -> None:
     """Dociąga pełną treść każdej pozycji i zapisuje ją OD RAZU, jedna po drugiej -
@@ -124,7 +175,30 @@ def _fetch_and_store_each(registry: Registry, store: Store, source: str,
         except Exception:
             log.exception("[%s] pominięto %s (nieoczekiwany błąd)", source, doc_id)
             continue
+
+        if not doc.get("full_text"):
+            # Bez treści (najczęściej stare orzeczenia, ok. 2013-2015 - portal
+            # oddaje 400 na /content mimo że /details działa) nie ma czego
+            # zaimportować do wyszukiwarki pełnotekstowej - nie zaśmiecamy
+            # bazy pustymi rekordami.
+            log.warning("[%s] pominięto %s: brak treści w źródle", source, doc_id)
+            store.mark_skipped(source, doc_id, "brak treści w źródle")
+            continue
+
         try:
+            sibling = store.find_sibling(
+                source, doc.get("signature"), doc.get("court"),
+                doc.get("judgment_date"), doc.get("publication_date"),
+                exclude_doc_id=doc_id)
+            if sibling and _is_uzasadnienie_pair(doc, sibling):
+                merged, absorbed_id = _merge_wyrok_uzasadnienie(doc, sibling)
+                result.added += store.upsert_documents([merged])
+                if absorbed_id != merged.get("doc_id"):
+                    store.delete_document(source, absorbed_id)
+                store.mark_skipped(
+                    source, absorbed_id,
+                    f"uzasadnienie scalone z rozstrzygnięciem {merged.get('doc_id')}")
+                continue
             result.added += store.upsert_documents([doc])
         except Exception as exc:
             result.status = "blad"

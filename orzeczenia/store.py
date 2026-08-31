@@ -386,6 +386,30 @@ class Store:
                     [now, source, *known])
         return added
 
+    def find_sibling(self, source: str, signature: str | None, court: str | None,
+                     judgment_date: Any, publication_date: Any,
+                     exclude_doc_id: str | None = None) -> dict[str, Any] | None:
+        """Szuka już zapisanego orzeczenia o tej samej sygnaturze, sądzie, dacie
+        orzeczenia i dacie publikacji - do scalania wyroku z uzasadnieniem, które
+        portal MS czasem publikuje jako dwa osobne dokumenty (np. sygnatura
+        „II K 971/25"; patrz obserwator.py: `_merge_wyrok_uzasadnienie`)."""
+        jd = _as_iso_date(judgment_date)
+        if not signature or not court or not jd:
+            return None
+        pd = _as_iso_date(publication_date)
+        rows = self._rows(
+            "SELECT * FROM orzeczenia WHERE source = ? AND signature = ? AND court = ? "
+            "AND judgment_date = ?", [source, signature, court, jd])
+        for r in rows:
+            if exclude_doc_id and r["doc_id"] == exclude_doc_id:
+                continue
+            if (r.get("publication_date") or None) == (pd or None):
+                return self._decode(r)
+        return None
+
+    def delete_document(self, source: str, doc_id: str) -> None:
+        self._run("DELETE FROM orzeczenia WHERE source = ? AND doc_id = ?", [source, doc_id])
+
     def upsert_documents(self, docs: list[dict[str, Any]]) -> int:
         """Zapisuje pełne dokumenty (wynik `Source.document()`). W przeciwieństwie
         do `upsert()` nadpisuje też treść już znanych pozycji - re-import może

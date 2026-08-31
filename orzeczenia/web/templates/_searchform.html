@@ -1,5 +1,5 @@
 {% from "_icons.html" import icon %}
-{% set Q = query %}
+{% set Q = query|default(none) %}
 {% set has_adv = Q and (Q.signature or Q.judge or Q.thematic or Q.legal_basis or Q.date_from or Q.date_to) %}
 <form class="searchform" action="/szukaj" method="get" autocomplete="off">
   <div class="searchbar">
@@ -57,7 +57,7 @@
 
     <div class="factions">
       <button type="submit">Zastosuj filtry</button>
-      <a class="clear" href="/szukaj{% if q %}?q={{ q|urlencode }}{% endif %}">Wyczyść</a>
+      <a class="clear" href="/szukaj{% if q|default('') %}?q={{ q|urlencode }}{% endif %}">Wyczyść</a>
     </div>
   </div>
 </form>
