@@ -40,6 +40,7 @@
         <div class="meta">
           <span>{{ icon('court', 'ic') }}{{ r.court or '—' }}{% if r.division %} · {{ r.division }}{% endif %}</span>
           <span title="data orzeczenia">{{ icon('calendar', 'ic') }}{{ r.judgment_date|datepl }}</span>
+          {% if r.panel %}<span>{{ icon('pen', 'ic') }}{{ r.panel|join(' · ') }}</span>{% endif %}
           {% if r.thematic %}<span>{{ icon('tag', 'ic') }}{{ r.thematic|join(' · ') }}</span>{% endif %}
         </div>
         {% if r.excerpt %}<p class="snippet">{{ r.excerpt }}</p>{% endif %}

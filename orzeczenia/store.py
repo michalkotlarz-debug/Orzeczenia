@@ -721,6 +721,13 @@ class Store:
                 d[key] = json.loads(d.get(key) or "[]")
             except (TypeError, ValueError):
                 d[key] = []
+        if not d["panel"] and d["judges"]:
+            # `panel` (sama lista nazwisk) to kolumna z czasów lekkiego upsert() -
+            # `upsert_documents()` (główna ścieżka importu od Fazy 1) jej nie
+            # wypełnia, tylko bogatsze `judges` (imię+nazwisko+rola). Karty
+            # wyników (`_card.html`) pokazują skład orzekający właśnie po
+            # `panel`, więc dociągamy go stąd, żeby znacznik w ogóle się pojawiał.
+            d["panel"] = [j.get("name") for j in d["judges"] if j.get("name")]
         d["url"] = f"/orzeczenie/{d['source']}/{d['doc_id']}"
         return d
 

@@ -55,6 +55,12 @@ with tempfile.TemporaryDirectory() as tmp:
     check("pełny dokument z bazy", got is not None, True)
     check("sygnatura z bazy", got["signature"], "II K 971/25")
     check("hasła wracają jako lista, nie JSON", got["thematic"], ["Alimenty"])
+    # upsert_documents() nie wypełnia kolumny "panel" (tylko bogatsze "judges"),
+    # ale karty wyników (_card.html/nowe.html) pokazują skład orzekający po
+    # "panel" - _decode() musi go dociągnąć z "judges", inaczej znacznik nigdy
+    # się nie pojawi mimo dostępnych danych o sędziach.
+    check("panel dociągnięty z judges, gdy kolumna panel jest pusta",
+         got["panel"], ["Jan Kowalski"])
 
     bez_tresci = doc("BEZ_TRESCI", "wyrok")   # full_text=None
     store.upsert_documents([bez_tresci])
