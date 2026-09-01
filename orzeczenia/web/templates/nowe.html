@@ -4,9 +4,6 @@
 {% block content %}
 <section class="wrap narrow">
   <h1 class="page-title">Nowe orzeczenia</h1>
-  <p class="lead">Pozycje, które obserwator zobaczył w portalach po raz pierwszy.
-     Wyszukiwarka pracuje na żywo — ta lista istnieje tylko po to, żeby dało się
-     powiedzieć, co doszło od ostatniego przebiegu.</p>
 
   {% if blad %}
   <p class="warn">{{ icon('info', 'ic') }} {{ blad }}</p>
@@ -51,7 +48,7 @@
     {% else %}
     <div class="empty">
       <p><b>Nic tu jeszcze nie ma</b></p>
-      <p>Obserwator jeszcze nie zrobił przebiegu albo od ostatniego nic nowego się nie pojawiło.</p>
+      <p>Brak orzeczeń z ostatnich dwóch tygodni - albo obserwator jeszcze nie zrobił przebiegu.</p>
     </div>
     {% endfor %}
   </div>

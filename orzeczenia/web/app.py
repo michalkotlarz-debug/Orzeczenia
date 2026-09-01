@@ -13,6 +13,7 @@ import io
 import logging
 import secrets
 from contextlib import asynccontextmanager
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -279,11 +280,15 @@ def download_document(source: str, doc_id: str):
         headers={"Content-Disposition": f'attachment; filename="{name}.txt"'})
 
 
+NOWE_LOOKBACK_DAYS = 14
+
+
 @app.get("/nowe", response_class=HTMLResponse)
 def new_page(request: Request, source: str = "", limit: int = Q(50, ge=1, le=200)):
-    """Co pojawiło się w portalach od ostatnich przebiegów obserwatora."""
+    """Orzeczenia z ostatnich dwóch tygodni (data orzeczenia), zebrane przez obserwatora."""
     store = get_store()
-    rows = store.latest(limit=limit, source=source) if store else []
+    since = (date.today() - timedelta(days=NOWE_LOOKBACK_DAYS)).isoformat()
+    rows = store.latest(limit=limit, source=source, since=since) if store else []
     runs = store.runs(8) if store else []
     return templates.TemplateResponse(request, "nowe.html", {
         "rows": rows, "runs": runs, "source": source,
