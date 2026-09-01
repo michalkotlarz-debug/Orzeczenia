@@ -153,7 +153,7 @@ try:
         "source": "nsa", "doc_id": "226B5A6CD0", "signature": "I SA/Łd 269/26",
         "doc_type": "wyrok", "court": "WSA w Łodzi", "division": None,
         "judgment_date": "2026-08-27", "excerpt": "w przedmiocie podatku od towarów i usług oddala skargę.",
-        "first_seen_at": "2026-08-29T05:00:00+00:00",
+        "first_seen_at": "2026-08-29T05:00:00+00:00", "thematic": ["Podatek od towarów i usług"],
         "url": "/orzeczenie/nsa/226B5A6CD0"}],
         runs=[{"started_at": "2026-08-29T05:00:00+00:00", "source": "ms",
                "seen": 30, "added": 4, "status": "ok", "detail": ""}],
