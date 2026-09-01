@@ -112,6 +112,42 @@ def _merge_wyrok_uzasadnienie(a: dict, b: dict) -> tuple[dict, str]:
     return combine_wyrok_uzasadnienie(wyrok, uzas), uzas.get("doc_id")
 
 
+def _resolve_ambiguous_pair(a: dict, b: dict) -> tuple[dict, str, str] | None:
+    """Gdy typ z tytułu nie pozwolił jednoznacznie odróżnić wyroku od
+    uzasadnienia (np. oba mają ten sam typ "wyrok" - portal potrafi oznaczyć
+    jeden dokument jako "wyrok" a drugi jako "wyrok z uzasadnieniem", oba
+    wykrywane jako `doc_type="wyrok"`), próbujemy po faktycznej ZAWARTOŚCI:
+
+    - jedna strona ma tylko sentencję, druga tylko uzasadnienie -> prawdziwa
+      para do scalenia (jak `_merge_wyrok_uzasadnienie`, tylko role wykryte
+      po treści, nie po typie z tytułu),
+    - jedna strona ma zarówno sentencję jak i uzasadnienie (kompletna), druga
+      tylko samą sentencję -> to nie para dwóch połówek, tylko dwie WERSJE
+      tego samego wyroku (bez uzasadnienia i z uzasadnieniem, opublikowane
+      osobno w różnym czasie - sprawdzone na żywo na sygnaturze „I AGa 84/18",
+      Sąd Apelacyjny w Rzeszowie) - kompletna wersja zostaje, okrojona znika
+      (bez łączenia tekstu - kompletna już ma wszystko).
+
+    Zwraca (dokument_do_zachowania, doc_id_do_wchłonięcia, "scalono"|"zastąpiono")
+    albo `None`, jeśli nadal niejednoznaczne (np. to naprawdę dwa różne
+    orzeczenia pod tą samą sygnaturą - sygnatury bywają, rzadko, używane
+    ponownie w innym roku/wydziale tego samego sądu)."""
+    a_sent, a_uzas = bool(a.get("sentencja")), bool(a.get("uzasadnienie"))
+    b_sent, b_uzas = bool(b.get("sentencja")), bool(b.get("uzasadnienie"))
+
+    if a_sent and not a_uzas and b_uzas and not b_sent:
+        return combine_wyrok_uzasadnienie(a, b), b["doc_id"], "scalono"
+    if b_sent and not b_uzas and a_uzas and not a_sent:
+        return combine_wyrok_uzasadnienie(b, a), a["doc_id"], "scalono"
+
+    a_complete, b_complete = a_sent and a_uzas, b_sent and b_uzas
+    if a_complete and not b_complete:
+        return a, b["doc_id"], "zastąpiono"
+    if b_complete and not a_complete:
+        return b, a["doc_id"], "zastąpiono"
+    return None
+
+
 def merge_specific_pair(store: Store, source: str, keep_doc_id: str, absorb_doc_id: str) -> bool:
     """Ręcznie wskazane scalenie dwóch już zaimportowanych dokumentów - dla
     przypadków, w których automatyczne rozpoznawanie typu z tytułu (patrz
@@ -330,14 +366,18 @@ def merge_existing_duplicates(cfg: Config, store: Store | None = None,
     """Jednorazowe (ale bezpieczne do wielokrotnego uruchomienia) porządkowanie:
     scala pary wyrok+uzasadnienie, które trafiły do bazy jako DWA osobne rekordy
     zanim `_fetch_and_store_each` zaczął je scalać na bieżąco (patrz backlog w
-    planie tej sesji). Grupa uznawana jest za bezpieczną do scalenia tylko gdy
-    ma dokładnie dwa wiersze - jeden typu "uzasadnienie", drugi właściwe
-    rozstrzygnięcie; grupy, które się nie kwalifikują (np. dwa razy ten sam typ -
-    prawdziwy podwójny import, nie ta sytuacja), są pomijane i logowane do
-    ręcznego przejrzenia, żeby nic nie zniknęło przez pomyłkę."""
+    planie tej sesji). Dwie ścieżki rozpoznania pary: (1) typ z tytułu -
+    jeden wiersz dokładnie "uzasadnienie", drugi właściwe rozstrzygnięcie;
+    (2) gdy to zawiedzie (oba wiersze mają ten sam/niejednoznaczny typ z
+    tytułu), `_resolve_ambiguous_pair` próbuje po faktycznej zawartości
+    (sentencja/uzasadnienie obecne czy nie). Grupy, które nadal się nie
+    kwalifikują (np. dwa razy dokładnie ta sama treść - prawdziwy podwójny
+    import, albo dwa naprawdę różne orzeczenia pod tą samą sygnaturą), są
+    pomijane i logowane do ręcznego przejrzenia, żeby nic nie zniknęło przez
+    pomyłkę."""
     own_store = store is None
     store = store or Store(cfg.store.url, cfg.store.keep_days)
-    stats = {"grup": 0, "scalonych": 0, "pominietych_niejednoznacznych": 0}
+    stats = {"grup": 0, "scalonych": 0, "zastapionych": 0, "pominietych_niejednoznacznych": 0}
     try:
         groups = store.duplicate_groups(source)
         stats["grup"] = len(groups)
@@ -345,16 +385,24 @@ def merge_existing_duplicates(cfg: Config, store: Store | None = None,
             rows = store.rows_for_group(g["source"], g["signature"], g["court"])
             uzas_rows = [r for r in rows if r.get("doc_type") == "uzasadnienie"]
             ruling_rows = [r for r in rows if r.get("doc_type") in RULING_DOC_TYPES]
+            merged = absorbed_id = kind = None
             if len(rows) == 2 and len(uzas_rows) == 1 and len(ruling_rows) == 1:
                 merged, absorbed_id = _merge_wyrok_uzasadnienie(uzas_rows[0], ruling_rows[0])
+                kind = "scalono"
+            elif len(rows) == 2:
+                resolved = _resolve_ambiguous_pair(rows[0], rows[1])
+                if resolved is not None:
+                    merged, absorbed_id, kind = resolved
+            if merged is not None:
                 store.upsert_documents([merged])
-                store.delete_document(source, absorbed_id)
+                if absorbed_id != merged.get("doc_id"):
+                    store.delete_document(source, absorbed_id)
                 store.mark_skipped(
                     source, absorbed_id,
-                    f"uzasadnienie scalone z rozstrzygnięciem {merged.get('doc_id')} (backfill)")
-                stats["scalonych"] += 1
-                log.info("[%s] scalono %s: %s + %s -> %s", source, g["signature"],
-                         ruling_rows[0]["doc_id"], uzas_rows[0]["doc_id"], merged.get("doc_id"))
+                    f"{kind} z {merged.get('doc_id')} (backfill)")
+                stats["scalonych" if kind == "scalono" else "zastapionych"] += 1
+                log.info("[%s] %s %s: %s -> %s", source, kind, g["signature"],
+                         [r["doc_id"] for r in rows], merged.get("doc_id"))
             else:
                 stats["pominietych_niejednoznacznych"] += 1
                 log.warning("[%s] grupa niejednoznaczna, pominięto (%s wierszy): %s %s",

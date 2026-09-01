@@ -187,15 +187,30 @@ with tempfile.TemporaryDirectory() as tmp:
     u3 = doc("DDD_uzas", "uzasadnienie", signature="II W 247/26",
             uzasadnienie="U3", full_text="U3",
             judgment_date="2026-08-20", publication_date="2026-08-28")
-    store.upsert_documents([wyrok, uzas, w1, w2, w3, u3])
-    check("sześć wierszy przed porządkowaniem", store.count(), {"ms": 6})
+    # jak sygnatura "I AGa 84/18" (Sąd Apelacyjny w Rzeszowie) na żywo: OBA
+    # wiersze mają doc_type "wyrok" (portal oznacza drugi jako "wyrok z
+    # uzasadnieniem", ale detekcja typu z tytułu i tak wykrywa "wyrok") -
+    # jeden to sama sentencja, drugi to kompletna wersja (sentencja+
+    # uzasadnienie) - kompletna ma zastąpić okrojoną, bez łączenia treści.
+    bare = doc("EEE_bez", "wyrok", signature="I AGa 84/18", sentencja="Sentencja bez uzasadnienia.",
+              full_text="Sentencja bez uzasadnienia.")
+    full = doc("EEE_z", "wyrok", signature="I AGa 84/18", sentencja="Sentencja bez uzasadnienia.",
+              uzasadnienie="I dochodzi jeszcze uzasadnienie.",
+              full_text="Sentencja bez uzasadnienia. I dochodzi jeszcze uzasadnienie.")
+    store.upsert_documents([wyrok, uzas, w1, w2, w3, u3, bare, full])
+    check("osiem wierszy przed porządkowaniem", store.count(), {"ms": 8})
 
     stats = merge_existing_duplicates(FakeCfg(), store=store, source="ms")
-    check("trzy grupy zdublowane", stats["grup"], 3)
+    check("cztery grupy zdublowane", stats["grup"], 4)
     check("dwie prawdziwe pary scalone", stats["scalonych"], 2)
+    check("jedna kompletna wersja zastąpiła okrojoną", stats["zastapionych"], 1)
     check("jedna grupa niejednoznaczna (dwa wyroki) pominięta",
          stats["pominietych_niejednoznacznych"], 1)
-    check("po scaleniu zostają cztery wiersze", store.count(), {"ms": 4})
+    check("po scaleniu zostaje pięć wierszy", store.count(), {"ms": 5})
+    check("okrojona wersja zniknęła (I AGa 84/18)", store.get_document("ms", "EEE_bez"), None)
+    check("kompletna wersja zostaje pod własnym doc_id, treść niezmieniona",
+         (store.get_document("ms", "EEE_z") or {}).get("full_text"),
+         "Sentencja bez uzasadnienia. I dochodzi jeszcze uzasadnienie.")
     check("para z różną datą orzeczenia scaliła się (II W 247/26)",
          store.get_document("ms", "DDD_uzas"), None)
     check("scalony DDD_wyrok ma teraz obie części",

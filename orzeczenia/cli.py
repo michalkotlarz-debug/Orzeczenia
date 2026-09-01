@@ -144,6 +144,7 @@ def scal_duplikaty(
     cfg = load_config(config)
     stats = merge_existing_duplicates(cfg, source=source)
     typer.echo(f"grup zdublowanych: {stats['grup']}  scalonych: {stats['scalonych']}  "
+               f"zastąpionych okrojoną wersją: {stats['zastapionych']}  "
                f"pominiętych (niejednoznacznych): {stats['pominietych_niejednoznacznych']}")
 
 
