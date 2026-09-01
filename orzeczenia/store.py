@@ -671,7 +671,11 @@ class Store:
         if d := _as_iso_date(since):
             sql += f" AND {col} >= ?"
             params.append(d)
-        sql += " ORDER BY first_seen_at DESC, id DESC LIMIT ?"
+        # Chronologicznie od najnowszej - wg TEJ SAMEJ daty, po której filtrujemy
+        # (data publikacji albo data orzeczenia), nie wg first_seen_at (kiedy MY
+        # to zaimportowaliśmy) - inaczej kolejność kart nie odpowiada wybranej
+        # zakładce "Data orzeczenia"/"Data publikacji".
+        sql += f" ORDER BY {col} DESC, first_seen_at DESC, id DESC LIMIT ?"
         params.append(int(limit))
         return [self._decode(r) for r in self._rows(sql, params)]
 

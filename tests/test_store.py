@@ -107,6 +107,26 @@ with tempfile.TemporaryDirectory() as tmp:
     store.close()
 
 # ----------------------------------------------------------------------
+print("\n== latest(): kolejność chronologiczna wg wybranej daty, nie wg first_seen_at ==")
+with tempfile.TemporaryDirectory() as tmp:
+    store = Store(f"sqlite:///{tmp}/test.sqlite3", keep_days=400)
+    # Zaimportowane w kolejności ODWROTNEJ niż ich daty - gdyby latest()
+    # sortował po first_seen_at (kiedy MY to zobaczyliśmy), kolejność kart
+    # byłaby nieprawidłowa względem wybranej zakładki "Data orzeczenia"/
+    # "Data publikacji" (zgłoszony przypadek: 25 sierpnia przed 27 sierpnia).
+    store.upsert_documents([
+        doc("OLD", "wyrok", signature="A 1/26", judgment_date="2026-08-25",
+           publication_date="2026-08-25", sentencja="s", full_text="s"),
+        doc("NEW", "wyrok", signature="A 2/26", judgment_date="2026-08-27",
+           publication_date="2026-08-20", sentencja="s", full_text="s"),
+    ])
+    check("wg daty publikacji: NEW ma wcześniejszą publikację niż OLD - powinien być NIŻEJ",
+         [r["doc_id"] for r in store.latest(10, date_field="publication")], ["OLD", "NEW"])
+    check("wg daty orzeczenia: NEW jest świeższy - powinien być WYŻEJ",
+         [r["doc_id"] for r in store.latest(10, date_field="judgment")], ["NEW", "OLD"])
+    store.close()
+
+# ----------------------------------------------------------------------
 print("\n== find_sibling / delete_document ==")
 with tempfile.TemporaryDirectory() as tmp:
     store = Store(f"sqlite:///{tmp}/test.sqlite3", keep_days=400)
