@@ -285,10 +285,12 @@ NOWE_LOOKBACK_DAYS = 14
 
 @app.get("/nowe", response_class=HTMLResponse)
 def new_page(request: Request, source: str = "", limit: int = Q(50, ge=1, le=200)):
-    """Orzeczenia z ostatnich dwóch tygodni (data orzeczenia), zebrane przez obserwatora."""
+    """Orzeczenia opublikowane w ostatnich dwóch tygodniach (data publikacji -
+    okno przesuwa się razem z dzisiejszą datą), zebrane przez obserwatora."""
     store = get_store()
     since = (date.today() - timedelta(days=NOWE_LOOKBACK_DAYS)).isoformat()
-    rows = store.latest(limit=limit, source=source, since=since) if store else []
+    rows = (store.latest(limit=limit, source=source, since=since, date_field="publication")
+           if store else [])
     return templates.TemplateResponse(request, "nowe.html", {
         "rows": rows, "source": source,
         "blad": _store_error if store is None else ""})

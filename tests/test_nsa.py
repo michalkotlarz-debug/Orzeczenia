@@ -167,6 +167,9 @@ with tempfile.TemporaryDirectory() as tmp:
     check("powrót do obiektu Hit", store.to_hit(rows[0]).signature, "I SA/Łd 269/26")
     check("filtr po dacie orzeczenia",
           [r["doc_id"] for r in store.latest(10, since="2026-08-15")], ["226B5A6CD0"])
+    check("filtr po dacie publikacji (używane przez /nowe)",
+          [r["doc_id"] for r in store.latest(10, since="2026-08-15", date_field="publication")],
+          ["abc"])
 
     store.record_run(RunResult(source="nsa", pages=2, seen=20, added=2),
                      "2026-08-29T05:00:00+00:00")

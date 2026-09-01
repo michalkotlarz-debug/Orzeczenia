@@ -660,14 +660,16 @@ class Store:
         return {r["source"]: r["n"] for r in rows}
 
     # ------------------------------------------------------------------
-    def latest(self, limit: int = 20, source: str = "", since: str = "") -> list[dict[str, Any]]:
+    def latest(self, limit: int = 20, source: str = "", since: str = "",
+              date_field: str = "judgment") -> list[dict[str, Any]]:
         sql = "SELECT * FROM orzeczenia WHERE 1=1"
         params: list[Any] = []
         if source:
             sql += " AND source = ?"
             params.append(source)
+        col = "publication_date" if date_field == "publication" else "judgment_date"
         if d := _as_iso_date(since):
-            sql += " AND judgment_date >= ?"
+            sql += f" AND {col} >= ?"
             params.append(d)
         sql += " ORDER BY first_seen_at DESC, id DESC LIMIT ?"
         params.append(int(limit))
