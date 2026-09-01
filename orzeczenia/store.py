@@ -389,21 +389,26 @@ class Store:
     def find_sibling(self, source: str, signature: str | None, court: str | None,
                      judgment_date: Any, publication_date: Any,
                      exclude_doc_id: str | None = None) -> dict[str, Any] | None:
-        """Szuka już zapisanego orzeczenia o tej samej sygnaturze, sądzie, dacie
-        orzeczenia i dacie publikacji - do scalania wyroku z uzasadnieniem, które
-        portal MS czasem publikuje jako dwa osobne dokumenty (np. sygnatura
-        „II K 971/25"; patrz obserwator.py: `_merge_wyrok_uzasadnienie`)."""
-        jd = _as_iso_date(judgment_date)
-        if not signature or not court or not jd:
+        """Szuka już zapisanego orzeczenia o tej samej sygnaturze i sądzie - do
+        scalania wyroku z uzasadnieniem, które portal MS czasem publikuje jako
+        dwa osobne dokumenty (np. sygnatura „II K 971/25"; patrz obserwator.py:
+        `_merge_wyrok_uzasadnienie`). Sygnatura+sąd muszą się zgadzać dokładnie;
+        data orzeczenia i data publikacji są tylko dodatkowym potwierdzeniem
+        (wystarczy, że zgadza się JEDNA z nich) - sprawdzone na żywo (sygnatura
+        „II W 247/26"), że portal potrafi dla uzasadnienia zapisać inną datę
+        orzeczenia niż dla samego wyroku tej samej sprawy, więc wymaganie
+        zgodności OBU dat gubiło prawdziwe pary."""
+        if not signature or not court:
             return None
+        jd = _as_iso_date(judgment_date)
         pd = _as_iso_date(publication_date)
         rows = self._rows(
-            "SELECT * FROM orzeczenia WHERE source = ? AND signature = ? AND court = ? "
-            "AND judgment_date = ?", [source, signature, court, jd])
+            "SELECT * FROM orzeczenia WHERE source = ? AND signature = ? AND court = ?",
+            [source, signature, court])
         for r in rows:
             if exclude_doc_id and r["doc_id"] == exclude_doc_id:
                 continue
-            if (r.get("publication_date") or None) == (pd or None):
+            if (jd and r.get("judgment_date") == jd) or (pd and r.get("publication_date") == pd):
                 return self._decode(r)
         return None
 
@@ -411,33 +416,25 @@ class Store:
         self._run("DELETE FROM orzeczenia WHERE source = ? AND doc_id = ?", [source, doc_id])
 
     def duplicate_groups(self, source: str = "") -> list[dict[str, Any]]:
-        """Grupy już zaimportowanych wpisów o tej samej sygnaturze/sądzie/dacie
-        orzeczenia/dacie publikacji, których jest więcej niż jedna - kandydaci
-        do jednorazowego wstecznego scalenia par wyrok+uzasadnienie zapisanych
-        PRZED wprowadzeniem scalania na bieżąco (patrz
-        `obserwator.merge_existing_duplicates`)."""
+        """Grupy już zaimportowanych wpisów o tej samej sygnaturze i sądzie,
+        których jest więcej niż jedna - kandydaci do jednorazowego wstecznego
+        scalenia par wyrok+uzasadnienie zapisanych PRZED wprowadzeniem scalania
+        na bieżąco (patrz `obserwator.merge_existing_duplicates`). Bez dat w
+        kluczu grupowania - patrz `find_sibling`, dlaczego wymaganie zgodności
+        dat gubiło prawdziwe pary."""
         where = "WHERE source = ?" if source else ""
         params = [source] if source else []
         return self._rows(
-            f"SELECT source, signature, court, judgment_date, publication_date, "
-            f"COUNT(*) AS n FROM orzeczenia {where} "
-            f"GROUP BY source, signature, court, judgment_date, publication_date "
-            f"HAVING COUNT(*) > 1 AND signature IS NOT NULL AND court IS NOT NULL "
-            f"AND judgment_date IS NOT NULL",
+            f"SELECT source, signature, court, COUNT(*) AS n FROM orzeczenia {where} "
+            f"GROUP BY source, signature, court "
+            f"HAVING COUNT(*) > 1 AND signature IS NOT NULL AND court IS NOT NULL",
             params)
 
-    def rows_for_group(self, source: str, signature: str, court: str,
-                       judgment_date: str, publication_date: str | None) -> list[dict[str, Any]]:
+    def rows_for_group(self, source: str, signature: str, court: str) -> list[dict[str, Any]]:
         """Pełne wiersze jednej grupy zwróconej przez `duplicate_groups`."""
-        if publication_date is None:
-            sql = ("SELECT * FROM orzeczenia WHERE source = ? AND signature = ? "
-                   "AND court = ? AND judgment_date = ? AND publication_date IS NULL")
-            params = [source, signature, court, judgment_date]
-        else:
-            sql = ("SELECT * FROM orzeczenia WHERE source = ? AND signature = ? "
-                   "AND court = ? AND judgment_date = ? AND publication_date = ?")
-            params = [source, signature, court, judgment_date, publication_date]
-        return [self._decode(r) for r in self._rows(sql, params)]
+        return [self._decode(r) for r in self._rows(
+            "SELECT * FROM orzeczenia WHERE source = ? AND signature = ? AND court = ?",
+            [source, signature, court])]
 
     def upsert_documents(self, docs: list[dict[str, Any]]) -> int:
         """Zapisuje pełne dokumenty (wynik `Source.document()`). W przeciwieństwie

@@ -155,10 +155,15 @@ class MsSource:
                 "portal nie oddał treści żadnej z pozycji na tej stronie wyników - "
                 "spróbuj innych filtrów, kolejnej strony, albo wróć za jakiś czas")
 
+        # Grupowanie tylko po sygnaturze+sądzie - NIE po datach: sprawdzone na
+        # żywo (sygnatura „II W 247/26"), że portal potrafi dla samego
+        # uzasadnienia zapisać inną datę orzeczenia niż dla wyroku tej samej
+        # sprawy (data publikacji zwykle się zgadza, ale nie zawsze), więc
+        # wymaganie zgodności OBU dat gubiło prawdziwe pary.
         groups: dict[tuple, list[Hit]] = {}
         order: list[tuple] = []
         for h in verified:
-            key = (h.signature, h.court, h.judgment_date, h.publication_date)
+            key = (h.signature, h.court)
             if key not in groups:
                 order.append(key)
             groups.setdefault(key, []).append(h)
@@ -168,10 +173,13 @@ class MsSource:
             group = groups[key]
             if len(group) == 2 and is_uzasadnienie_pair(group[0].doc_type, group[1].doc_type):
                 a, b = group
-                wyrok, uzas = (a, b) if a.doc_type != "uzasadnienie" else (b, a)
-                out.append(replace(wyrok, excerpt=wyrok.excerpt or uzas.excerpt))
-            else:
-                out.extend(group)
+                same_dates = (a.judgment_date and a.judgment_date == b.judgment_date) or \
+                            (a.publication_date and a.publication_date == b.publication_date)
+                if same_dates:
+                    wyrok, uzas = (a, b) if a.doc_type != "uzasadnienie" else (b, a)
+                    out.append(replace(wyrok, excerpt=wyrok.excerpt or uzas.excerpt))
+                    continue
+            out.extend(group)
         return out
 
     @staticmethod
@@ -220,10 +228,13 @@ class MsSource:
                      publication_date: str | None) -> Hit | None:
         """Szuka - przez wyszukiwanie po samej sygnaturze - drugiej połowy pary
         wyrok+uzasadnienie opublikowanej jako osobny dokument tej samej sprawy
-        (ta sama sygnatura/sąd/data orzeczenia/data publikacji). Używane przez
-        `document()`, gdy własna treść jest niedostępna albo gdy ten dokument
-        sam jest tylko uzasadnieniem."""
-        if not signature or not court or not judgment_date:
+        (ta sama sygnatura i sąd; data orzeczenia/data publikacji to tylko
+        dodatkowe potwierdzenie - wystarczy zgodność JEDNEJ z nich, bo portal
+        potrafi dla uzasadnienia zapisać inną datę orzeczenia niż dla wyroku
+        tej samej sprawy, sprawdzone na żywo na sygnaturze „II W 247/26").
+        Używane przez `document()`, gdy własna treść jest niedostępna albo gdy
+        ten dokument sam jest tylko uzasadnieniem."""
+        if not signature or not court:
             return None
         try:
             html = self.http.get(self.search_url(Query(signature=signature), 1))
@@ -232,7 +243,9 @@ class MsSource:
         for h in self.parse_results(html):
             if h.doc_id == doc_id or h.court != court:
                 continue
-            if h.judgment_date != judgment_date or h.publication_date != publication_date:
+            same_dates = (judgment_date and h.judgment_date == judgment_date) or \
+                        (publication_date and h.publication_date == publication_date)
+            if not same_dates:
                 continue
             if is_uzasadnienie_pair(own_type, h.doc_type):
                 return h

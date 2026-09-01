@@ -109,6 +109,23 @@ out3 = ms2._filter_and_merge_hits([hit("W1", "wyrok", signature="X 1/25"),
                                    hit("W2", "wyrok", signature="X 1/25")])
 check("dwa wyroki tej samej sygnatury (prawdziwy duplikat) NIE są scalane", len(out3), 2)
 
+# Sprawdzone na żywo (sygnatura „II W 247/26"): portal potrafi dla
+# uzasadnienia zapisać INNĄ datę orzeczenia niż dla wyroku tej samej sprawy -
+# ta sama sygnatura+sąd+data PUBLIKACJI wystarcza.
+out4 = ms2._filter_and_merge_hits([
+    hit("W247", "wyrok", signature="II W 247/26", judgment_date="2026-08-06",
+       publication_date="2026-08-28"),
+    hit("U247", "uzasadnienie", signature="II W 247/26", judgment_date="2026-08-20",
+       publication_date="2026-08-28")])
+check("para scalona mimo różnej daty orzeczenia (zgadza się data publikacji)",
+     [h.doc_id for h in out4], ["W247"])
+
+# Ale inny sąd to naprawdę inna sprawa - nie wolno scalić.
+out5 = ms2._filter_and_merge_hits([
+    hit("W5", "wyrok", signature="II K 1/25", court="Sąd Rejonowy A"),
+    hit("U5", "uzasadnienie", signature="II K 1/25", court="Sąd Rejonowy B")])
+check("ta sama sygnatura w INNYM sądzie NIE jest scalana", len(out5), 2)
+
 print("\n== _filter_and_merge_hits: brak treści u WSZYSTKICH na stronie to nie 'brak wyników' ==")
 # Sprawdzone na żywo: portal potrafi oddać 400 na /content/ dla całej strony
 # naraz (chwilowa blokada/przeciążenie, nie brak treści u każdej pozycji z

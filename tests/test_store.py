@@ -11,9 +11,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from orzeczenia.obserwator import (                                   # noqa: E402
-    _is_uzasadnienie_pair, _merge_wyrok_uzasadnienie, merge_existing_duplicates,
-    merge_specific_pair)
-from orzeczenia.store import Store                                    # noqa: E402
+    _fetch_and_store_each, _is_uzasadnienie_pair, _merge_wyrok_uzasadnienie,
+    merge_existing_duplicates, merge_specific_pair)
+from orzeczenia.store import RunResult, Store                         # noqa: E402
 
 failures: list[str] = []
 
@@ -123,6 +123,18 @@ with tempfile.TemporaryDirectory() as tmp:
     check("brak sygnatury/sądu daje None",
          store.find_sibling("ms", None, None, "2025-05-01", "2025-05-10"), None)
 
+    # Sprawdzone na żywo (sygnatura „II W 247/26"): portal potrafi dla
+    # uzasadnienia zapisać INNĄ datę orzeczenia niż dla wyroku tej samej
+    # sprawy - wystarczy więc zgodność samej daty publikacji.
+    check("sibling znaleziony mimo różnej daty orzeczenia, gdy zgadza się data publikacji",
+         store.find_sibling("ms", "II K 971/25", "Sąd Rejonowy w X",
+                            "2099-01-01", "2025-05-10") is not None,
+         True)
+    check("sibling NIE znaleziony, gdy różni się i data orzeczenia, i data publikacji",
+         store.find_sibling("ms", "II K 971/25", "Sąd Rejonowy w X",
+                            "2099-01-01", "2099-01-01"),
+         None)
+
     store.delete_document("ms", "AAA")
     check("delete_document faktycznie usuwa", store.count(), {})
     store.close()
@@ -168,15 +180,28 @@ with tempfile.TemporaryDirectory() as tmp:
 
     w1 = doc("CCC1", "wyrok", signature="X K 1/25", sentencja="S", full_text="S")
     w2 = doc("CCC2", "wyrok", signature="X K 1/25", sentencja="S2", full_text="S2")
-    store.upsert_documents([wyrok, uzas, w1, w2])
-    check("cztery wiersze przed porządkowaniem", store.count(), {"ms": 4})
+    # jak sygnatura "II W 247/26" na żywo: ta sama sygnatura/sąd/data
+    # publikacji, ale INNA data orzeczenia - musi się scalić mimo to.
+    w3 = doc("DDD_wyrok", "wyrok", signature="II W 247/26", sentencja="S3",
+            full_text="S3", judgment_date="2026-08-06", publication_date="2026-08-28")
+    u3 = doc("DDD_uzas", "uzasadnienie", signature="II W 247/26",
+            uzasadnienie="U3", full_text="U3",
+            judgment_date="2026-08-20", publication_date="2026-08-28")
+    store.upsert_documents([wyrok, uzas, w1, w2, w3, u3])
+    check("sześć wierszy przed porządkowaniem", store.count(), {"ms": 6})
 
     stats = merge_existing_duplicates(FakeCfg(), store=store, source="ms")
-    check("dwie grupy zdublowane", stats["grup"], 2)
-    check("jedna prawdziwa para scalona", stats["scalonych"], 1)
+    check("trzy grupy zdublowane", stats["grup"], 3)
+    check("dwie prawdziwe pary scalone", stats["scalonych"], 2)
     check("jedna grupa niejednoznaczna (dwa wyroki) pominięta",
          stats["pominietych_niejednoznacznych"], 1)
-    check("po scaleniu zostają trzy wiersze", store.count(), {"ms": 3})
+    check("po scaleniu zostają cztery wiersze", store.count(), {"ms": 4})
+    check("para z różną datą orzeczenia scaliła się (II W 247/26)",
+         store.get_document("ms", "DDD_uzas"), None)
+    check("scalony DDD_wyrok ma teraz obie części",
+         "S3" in (store.get_document("ms", "DDD_wyrok") or {}).get("full_text", "") and
+         "U3" in (store.get_document("ms", "DDD_wyrok") or {}).get("full_text", ""),
+         True)
     check("uzasadnienie zniknęło jako osobny wiersz", store.get_document("ms", "BBB_uzas"), None)
     check("wchłonięte oznaczone jako pominięte", store.skipped_ids("ms", ["BBB_uzas"]),
          {"BBB_uzas"})
@@ -211,6 +236,32 @@ with tempfile.TemporaryDirectory() as tmp:
 
     check("nieistniejące doc_id nie crashuje, zwraca False",
          merge_specific_pair(store, "ms", "NOPE1", "NOPE2"), False)
+    store.close()
+
+# ----------------------------------------------------------------------
+print("\n== _fetch_and_store_each: samo uzasadnienie bez wyroku NIE jest publikowane ==")
+with tempfile.TemporaryDirectory() as tmp:
+    store = Store(f"sqlite:///{tmp}/test.sqlite3", keep_days=400)
+
+    class FakeRegistry:
+        """Zwraca zawsze samo uzasadnienie - jakby MsSource.document() nie
+        znalazł na żywo żadnej pasującej pozycji wyroku (jeszcze
+        nieopublikowanej albo jeszcze nie napotkanej w tym przebiegu)."""
+        def document(self, source, doc_id):
+            return {
+                "source": "ms", "doc_id": doc_id, "signature": "II W 999/26",
+                "court": "Sąd Rejonowy w Z", "doc_type": "uzasadnienie",
+                "judgment_date": "2026-08-01", "publication_date": "2026-08-10",
+                "uzasadnienie": "Treść.", "full_text": "Treść.",
+                "judges": [], "thematic": [], "source_url": "http://x",
+            }
+
+    result = RunResult(source="ms")
+    _fetch_and_store_each(FakeRegistry(), store, "ms", ["SOLO_UZAS"], result)
+    check("samo uzasadnienie bez wyroku NIE trafia do bazy", store.count(), {})
+    check("nie oznaczone jako trwale pominięte (ma szansę w kolejnym przebiegu)",
+         store.skipped_ids("ms", ["SOLO_UZAS"]), set())
+    check("nic nie policzone jako dodane", result.added, 0)
     store.close()
 
 # ----------------------------------------------------------------------

@@ -42,7 +42,6 @@
           <span>{{ icon('calendar', 'ic') }}{{ r.judgment_date|datepl }}</span>
         </div>
         {% if r.excerpt %}<p class="snippet">{{ r.excerpt }}</p>{% endif %}
-        <div class="subdates"><span>zauważono {{ r.first_seen_at[:10]|datepl }}</span></div>
       </a>
     </article>
     {% else %}

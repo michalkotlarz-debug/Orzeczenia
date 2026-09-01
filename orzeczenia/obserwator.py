@@ -186,6 +186,17 @@ def _fetch_and_store_each(registry: Registry, store: Store, source: str,
                     source, absorbed_id,
                     f"uzasadnienie scalone z rozstrzygnięciem {merged.get('doc_id')}")
                 continue
+            if doc.get("doc_type") == "uzasadnienie":
+                # Samo uzasadnienie bez sparowanego wyroku - ani w bazie
+                # (sprawdzone wyżej), ani na żywo (MsSource.document() już
+                # próbował znaleźć i scalić sibling przed zwróceniem doc).
+                # Portal albo jeszcze nie opublikował wyroku, albo jeszcze do
+                # niego nie dotarliśmy w tym przebiegu - NIE publikujemy samego
+                # uzasadnienia. Nie oznaczamy jako pominięte, żeby kolejny
+                # przebieg spróbował ponownie, gdy wyrok się pojawi.
+                log.info("[%s] wstrzymano %s: samo uzasadnienie, brak sparowanego wyroku",
+                        source, doc_id)
+                continue
             result.added += store.upsert_documents([doc])
         except Exception as exc:
             result.status = "blad"
@@ -331,8 +342,7 @@ def merge_existing_duplicates(cfg: Config, store: Store | None = None,
         groups = store.duplicate_groups(source)
         stats["grup"] = len(groups)
         for g in groups:
-            rows = store.rows_for_group(g["source"], g["signature"], g["court"],
-                                        g["judgment_date"], g["publication_date"])
+            rows = store.rows_for_group(g["source"], g["signature"], g["court"])
             uzas_rows = [r for r in rows if r.get("doc_type") == "uzasadnienie"]
             ruling_rows = [r for r in rows if r.get("doc_type") in RULING_DOC_TYPES]
             if len(rows) == 2 and len(uzas_rows) == 1 and len(ruling_rows) == 1:
