@@ -202,6 +202,26 @@ def scal_recznie(
         store.close()
 
 
+@app.command("liczba")
+def liczba(
+    since: str = typer.Option(..., "--since", help="RRRR-MM-DD"),
+    date_field: str = typer.Option("publication", "--date-field",
+                                   help="'publication' (data publikacji) albo 'judgment' (data orzeczenia)"),
+    source: str = typer.Option("", "--source"),
+    config: Path = typer.Option("config.yaml", "--config", "-c"),
+):
+    """Debug: ile zaimportowanych dokumentów ma datę orzeczenia/publikacji >= since."""
+    from .store import Store
+    cfg = load_config(config)
+    store = Store(cfg.store.url, cfg.store.keep_days)
+    try:
+        _, total = store.search_advanced(source=source, date_field=date_field,
+                                         date_from=since, limit=1, offset=0)
+        typer.echo(f"{total}")
+    finally:
+        store.close()
+
+
 def _redact_url(url: str) -> str:
     """Adres bazy bez hasła - to trafia na ekran/w logi, hasło nie powinno."""
     from urllib.parse import urlsplit, urlunsplit
