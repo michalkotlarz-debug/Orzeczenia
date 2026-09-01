@@ -196,14 +196,16 @@ def _search(query: Query, page: int, source: str,
 
 # ----------------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
-def home(request: Request):
+def home(request: Request, date_field: str = "publication"):
+    date_field = date_field if date_field in ("judgment", "publication") else "publication"
     store = get_store()
     since = (date.today() - timedelta(days=NOWE_LOOKBACK_DAYS)).isoformat()
-    latest_rows = (store.latest(limit=8, since=since, date_field="publication")
+    latest_rows = (store.latest(limit=8, since=since, date_field=date_field)
                   if store else [])
     baza = store.count() if store else {}
     return templates.TemplateResponse(request, "home.html", {
-        "latest_rows": latest_rows, "baza": baza, "baza_razem": sum(baza.values())})
+        "latest_rows": latest_rows, "date_field": date_field,
+        "baza": baza, "baza_razem": sum(baza.values())})
 
 
 @app.get("/szukaj", response_class=HTMLResponse)

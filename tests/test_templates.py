@@ -114,7 +114,8 @@ try:
     reg = make_registry()
     q = Query(phrase="wadium")
 
-    render("home.html", "1-strona-glowna.html", latest_rows=reg.search(Query(sort="pub_desc")).hits)
+    render("home.html", "1-strona-glowna.html", latest_rows=reg.search(Query(sort="pub_desc")).hits,
+          date_field="publication")
 
     res = reg.search(q, page=1)
     h = render("results.html", "2-wyniki.html", q="wadium", res=res, query=q, page=1,

@@ -21,11 +21,15 @@
     <h2>Ostatnio opublikowane</h2>
     <a class="more" href="/nowe">Zobacz więcej</a>
   </div>
+  <nav class="tabs">
+    <a class="tab {% if date_field == 'judgment' %}on{% endif %}" href="/?date_field=judgment">Data orzeczenia</a>
+    <a class="tab {% if date_field != 'judgment' %}on{% endif %}" href="/?date_field=publication">Data publikacji</a>
+  </nav>
   {% if latest_rows %}
   <div class="cards">{% for h in latest_rows %}{{ result_card(h) }}{% endfor %}</div>
   {% else %}
   <div class="empty">
-    <p><b>Brak orzeczeń opublikowanych w ostatnich dwóch tygodniach</b></p>
+    <p><b>Brak orzeczeń{% if date_field == 'judgment' %} wydanych{% else %} opublikowanych{% endif %} w ostatnich dwóch tygodniach</b></p>
     <p>Wyszukiwanie może nadal działać — spróbuj przez <a href="/szukaj">wyszukiwarkę</a>.</p>
   </div>
   {% endif %}
