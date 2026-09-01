@@ -19,13 +19,13 @@
 <section class="wrap">
   <div class="section-head">
     <h2>Ostatnio opublikowane</h2>
-    <a class="more" href="/szukaj?sort=pub_desc">Zobacz więcej</a>
+    <a class="more" href="/nowe">Zobacz więcej</a>
   </div>
-  {% if latest and latest.hits %}
-  <div class="cards">{% for h in latest.hits %}{{ result_card(h) }}{% endfor %}</div>
+  {% if latest_rows %}
+  <div class="cards">{% for h in latest_rows %}{{ result_card(h) }}{% endfor %}</div>
   {% else %}
   <div class="empty">
-    <p><b>Serwisy źródłowe chwilowo nie odpowiadają</b></p>
+    <p><b>Brak orzeczeń opublikowanych w ostatnich dwóch tygodniach</b></p>
     <p>Wyszukiwanie może nadal działać — spróbuj przez <a href="/szukaj">wyszukiwarkę</a>.</p>
   </div>
   {% endif %}

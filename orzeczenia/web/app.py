@@ -197,14 +197,13 @@ def _search(query: Query, page: int, source: str,
 # ----------------------------------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    try:
-        latest = registry.latest(limit=8)
-    except Exception:
-        latest = None
     store = get_store()
+    since = (date.today() - timedelta(days=NOWE_LOOKBACK_DAYS)).isoformat()
+    latest_rows = (store.latest(limit=8, since=since, date_field="publication")
+                  if store else [])
     baza = store.count() if store else {}
     return templates.TemplateResponse(request, "home.html", {
-        "latest": latest, "baza": baza, "baza_razem": sum(baza.values())})
+        "latest_rows": latest_rows, "baza": baza, "baza_razem": sum(baza.values())})
 
 
 @app.get("/szukaj", response_class=HTMLResponse)
