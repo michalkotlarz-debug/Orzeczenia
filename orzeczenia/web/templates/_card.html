@@ -23,7 +23,7 @@
   <a class="card-link" href="{{ h.url }}{% if q %}?q={{ q|urlencode }}{% endif %}">
     <div class="meta">
       <span>{{ icon('court', 'ic') }}{{ h.court or '—' }}{% if h.division %} · {{ h.division }}{% endif %}</span>
-      <span{% if query and query.date_field == 'judgment' and (query.date_from or query.date_to) %} class="hl"{% endif %}>
+      <span title="data orzeczenia"{% if query and query.date_field == 'judgment' and (query.date_from or query.date_to) %} class="hl"{% endif %}>
         {{ icon('calendar', 'ic') }}{{ h.judgment_date|datepl }}</span>
       {% if h.panel %}<span>{{ icon('pen', 'ic') }}{{ h.panel|join(' · ') }}</span>{% endif %}
       {% if h.thematic %}<span>{{ icon('tag', 'ic') }}{{ h.thematic|join(' · ') }}</span>{% endif %}
