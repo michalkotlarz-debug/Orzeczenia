@@ -289,9 +289,8 @@ def new_page(request: Request, source: str = "", limit: int = Q(50, ge=1, le=200
     store = get_store()
     since = (date.today() - timedelta(days=NOWE_LOOKBACK_DAYS)).isoformat()
     rows = store.latest(limit=limit, source=source, since=since) if store else []
-    runs = store.runs(8) if store else []
     return templates.TemplateResponse(request, "nowe.html", {
-        "rows": rows, "runs": runs, "source": source,
+        "rows": rows, "source": source,
         "blad": _store_error if store is None else ""})
 
 

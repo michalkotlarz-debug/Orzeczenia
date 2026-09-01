@@ -293,7 +293,12 @@ def import_ms_batch(cfg: Config, registry: Registry | None = None, store: Store 
         known = _known_ids_chunked(store, "ms", ids)
         candidates = [i for i in ids if i not in known]
         skipped = _skipped_ids_chunked(store, "ms", candidates) if full else set()
-        new_ids = list(dict.fromkeys(i for i in candidates if i not in skipped))[:limit]
+        # `ids` z ncourt-api jest chronologicznie rosnące (od `since` w górę) -
+        # zaczynamy od KOŃCA (najnowsze publikacje), żeby świeże orzeczenia
+        # trafiały do wyszukiwarki od razu, zamiast czekać, aż pełny import
+        # (since=EARLIEST_DATE, setki tysięcy zaległych pozycji) przetworzy
+        # najpierw cały starszy zbiór.
+        new_ids = list(dict.fromkeys(i for i in reversed(candidates) if i not in skipped))[:limit]
         result.seen = len(new_ids)
 
         _fetch_and_store_each(registry, store, "ms", new_ids, result)

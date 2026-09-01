@@ -52,25 +52,5 @@
     </div>
     {% endfor %}
   </div>
-
-  {% if runs %}
-  <details class="runs">
-    <summary>Ostatnie przebiegi obserwatora</summary>
-    <table class="runtable">
-      <thead><tr><th>kiedy</th><th>serwis</th><th>obejrzano</th><th>nowych</th><th>stan</th></tr></thead>
-      <tbody>
-        {% for run in runs %}
-        <tr>
-          <td>{{ run.started_at }}</td>
-          <td>{{ source_label.get(run.source, run.source) }}</td>
-          <td>{{ run.seen }}</td>
-          <td>{{ run.added }}</td>
-          <td>{% if run.status == 'ok' %}ok{% else %}<span class="bad">{{ run.detail or 'błąd' }}</span>{% endif %}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </details>
-  {% endif %}
 </section>
 {% endblock %}
