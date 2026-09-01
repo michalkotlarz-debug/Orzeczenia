@@ -35,7 +35,12 @@ sources:
     poll: true
     poll_pages: 3
   nsa:
-    enabled: true
+    # Wyłączone na wyraźne polecenie: strona miała łączyć się z NSA/CBOSA na
+    # żywo przy każdych odwiedzinach strony głównej (sekcja "Ostatnio
+    # opublikowane") i przy każdym przeszukiwaniu wszystkich źródeł naraz -
+    # `poll: false` (import do bazy) samo w sobie tego nie zatrzymywało.
+    # Do ewentualnego przywrócenia w przyszłości - patrz notatnik/backlog.
+    enabled: false
     label: "Sądy administracyjne"
     base_url: "https://orzeczenia.nsa.gov.pl"
     # CBOSA w robots.txt zabrania /cbo/search i /cbo/find WSZYSTKIM robotom.

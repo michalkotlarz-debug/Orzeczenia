@@ -8,7 +8,7 @@ i pokazujemy ją w jednym, spójnym interfejsie.
 | Źródło | Adres | Co daje |
 |---|---|---|
 | Portal Orzeczeń Sądów Powszechnych | `orzeczenia.ms.gov.pl` | wyroki, postanowienia i uzasadnienia sądów rejonowych, okręgowych i apelacyjnych |
-| Centralna Baza Orzeczeń Sądów Administracyjnych | `orzeczenia.nsa.gov.pl` | orzeczenia NSA i szesnastu WSA, sygnatury typu `I SA/Łd 269/26` |
+| Centralna Baza Orzeczeń Sądów Administracyjnych *(obecnie wyłączone - `sources.nsa.enabled: false`)* | `orzeczenia.nsa.gov.pl` | orzeczenia NSA i szesnastu WSA, sygnatury typu `I SA/Łd 269/26` |
 | Baza orzeczeń KIO | `orzeczenia.uzp.gov.pl` | orzeczenia Krajowej Izby Odwoławczej, sygnatury typu `KIO 1919/16` |
 
 Jedyne, co aplikacja u siebie zapisuje, to **lista nowo zauważonych sygnatur** —
