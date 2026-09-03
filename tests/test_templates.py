@@ -137,13 +137,6 @@ try:
     h = render("document.html", "4-orzeczenie-sad.html", d=doc2, q="")
     assert "utrzymuje w mocy" in h, "treść orzeczenia nie trafiła na stronę"
 
-    # jedno źródło padło - strona nadal działa i mówi o tym wprost
-    reg2 = make_registry(fail={"uzp.gov.pl"})
-    res2 = reg2.search(q, page=1)
-    h = render("results.html", "5-zrodlo-niedostepne.html", q="wadium", res=res2, query=q,
-               page=1, params={"q": "wadium"}, source="")
-    assert "KIO" in h and "nie odpowiedział" in h, "brak komunikatu o awarii źródła"
-
     empty = reg.search(Query(judge="Kowalski"), page=1)
     empty.hits = []
     render("results.html", "6-brak-wynikow.html", q="", res=empty, query=Query(), page=1,
@@ -152,22 +145,20 @@ try:
     render("nowe.html", "7-nowe-orzeczenia.html", rows=[{
         "source": "nsa", "doc_id": "226B5A6CD0", "signature": "I SA/Łd 269/26",
         "doc_type": "wyrok", "court": "WSA w Łodzi", "division": None,
-        "judgment_date": "2026-08-27", "excerpt": "w przedmiocie podatku od towarów i usług oddala skargę.",
+        "judgment_date": "2026-08-27", "publication_date": "2026-08-29",
+        "excerpt": "w przedmiocie podatku od towarów i usług oddala skargę.",
         "first_seen_at": "2026-08-29T05:00:00+00:00", "thematic": ["Podatek od towarów i usług"],
         "panel": ["Agnieszka Gortych-Ratajczyk"],
         "url": "/orzeczenie/nsa/226B5A6CD0"}],
-        runs=[{"started_at": "2026-08-29T05:00:00+00:00", "source": "ms",
-               "seen": 30, "added": 4, "status": "ok", "detail": ""}],
-        source="", blad="")
+        source="", date_field="publication", blad="")
 
-    render("nowe.html", "8-nowe-pusto.html", rows=[], runs=[], source="",
+    render("nowe.html", "8-nowe-pusto.html", rows=[], source="", date_field="publication",
            blad="baza obserwatora niedostępna: brak DATABASE_URL")
 
     render("ulubione.html", "9-ulubione.html")
     render("blad.html", "10-blad.html", tytul="Nie udało się pobrać orzeczenia",
            opis="serwis chwilowo ogranicza zapytania (pokazał CAPTCHA).")
     reg.close()
-    reg2.close()
 except Exception as exc:
     import traceback
     traceback.print_exc()

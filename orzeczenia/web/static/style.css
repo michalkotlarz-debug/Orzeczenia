@@ -15,13 +15,20 @@
   --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
 }
 @media (prefers-color-scheme: dark){
-  :root{
+  :root:not([data-theme="light"]){
     --bg:#14161a; --band:#181b20; --panel:#1c1f25; --ink:#eceae5; --ink-soft:#c6c9cf;
     --muted:#949aa5; --line:#2c3038; --line-soft:#23262c;
     --navy:#7ea9d8; --navy-ink:#10141a; --navy-soft:#1e2833;
     --amber:#d3a163; --mark:#544a1c;
     --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
   }
+}
+:root[data-theme="dark"]{
+  --bg:#14161a; --band:#181b20; --panel:#1c1f25; --ink:#eceae5; --ink-soft:#c6c9cf;
+  --muted:#949aa5; --line:#2c3038; --line-soft:#23262c;
+  --navy:#7ea9d8; --navy-ink:#10141a; --navy-soft:#1e2833;
+  --amber:#d3a163; --mark:#544a1c;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
 }
 *{box-sizing:border-box}
 [hidden]{display:none !important}   /* inaczej display:grid/flex bije regułę UA */
@@ -57,6 +64,19 @@ button{font:inherit;cursor:pointer}
 .doc-counter{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;
   font-size:14px;color:var(--muted)}
 .doc-counter b{color:var(--ink);font-weight:700}
+
+/* ---------------- przełącznik motywu ---------------- */
+.theme-toggle{width:34px;height:34px;border:1px solid var(--line);background:var(--panel);
+  color:var(--ink-soft);border-radius:9px;display:grid;place-items:center;margin-left:4px}
+.theme-toggle:hover{background:var(--band);color:var(--ink)}
+.theme-toggle .sun{display:none}
+.theme-toggle .moon{display:block}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .theme-toggle .sun{display:block}
+  :root:not([data-theme="light"]) .theme-toggle .moon{display:none}
+}
+:root[data-theme="dark"] .theme-toggle .sun{display:block}
+:root[data-theme="dark"] .theme-toggle .moon{display:none}
 
 /* ---------------- hero ---------------- */
 .hero{background:var(--band);border-bottom:1px solid var(--line);padding:72px 0 56px;text-align:center}
@@ -126,7 +146,8 @@ main h2{font-size:17px;font-weight:650;letter-spacing:-.01em}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
   padding:16px 18px;transition:border-color .15s, box-shadow .15s, transform .15s}
 .card:hover{border-color:#d8d3c9;box-shadow:var(--shadow);transform:translateY(-1px)}
-@media (prefers-color-scheme: dark){.card:hover{border-color:#3a404a}}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .card:hover{border-color:#3a404a}}
+:root[data-theme="dark"] .card:hover{border-color:#3a404a}
 .card-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
 .ident{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
 .badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:8px;
@@ -135,14 +156,6 @@ main h2{font-size:17px;font-weight:650;letter-spacing:-.01em}
 .badge .ic{color:var(--navy);font-size:13px}
 .sig{font-family:var(--mono);font-size:14.5px;font-weight:600;letter-spacing:-.01em}
 .card .sig:hover{color:var(--navy);text-decoration:underline}
-.src{font-size:11px;padding:3px 9px;border-radius:999px;background:var(--navy-soft);
-  color:var(--navy);font-weight:600}
-.src-kio{background:#f7efe0;color:#8a5d18}
-.src-nsa{background:#e7f0ea;color:#2c5c42}
-@media (prefers-color-scheme: dark){
-  .src-kio{background:#332a17;color:#d9ae67}
-  .src-nsa{background:#1c2c23;color:#8fc4a6}
-}
 .tools{display:flex;gap:2px;flex:none}
 .tool{width:32px;height:32px;border:0;background:transparent;border-radius:9px;color:var(--muted);
   display:grid;place-items:center;font-size:16px}

@@ -6,13 +6,11 @@
          data-sig="{{ h.signature or '' }}"
          data-type="{{ h.doc_type or '' }}"
          data-court="{{ h.court or '' }}"
-         data-date="{{ h.judgment_date or '' }}"
-         data-src="{{ source_label.get(h.source, h.source) }}">
+         data-date="{{ h.judgment_date or '' }}">
   <div class="card-top">
     <div class="ident">
       <span class="badge">{{ icon('gavel', 'ic') }} {{ (h.doc_type or 'orzeczenie')|upper }}</span>
       <a class="sig" href="{{ h.url }}{% if q %}?q={{ q|urlencode }}{% endif %}">{{ h.signature or '(bez sygnatury)' }}</a>
-      <span class="src src-{{ h.source }}">{{ source_label.get(h.source, h.source) }}</span>
     </div>
     <div class="tools">
       <a class="tool" href="{{ h.url }}/pobierz.txt" title="Pobierz treść">{{ icon('download', 'ic') }}</a>

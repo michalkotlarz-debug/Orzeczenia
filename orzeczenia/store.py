@@ -659,6 +659,44 @@ class Store:
             f"GROUP BY source", params)
         return {r["source"]: r["n"] for r in rows}
 
+    def suggest(self, field: str, prefix: str, limit: int = 8) -> list[str]:
+        """Podpowiedzi do autouzupełniania pól filtra na podstawie wartości już
+        obecnych w bazie - użytkownik trafia w istniejącą pisownię (np. dokładne
+        nazwisko sędziego) zamiast zgadywać. `judge`/`thematic` to zserializowane
+        JSON-y (listy nazwisk/haseł), `legal_basis` to zwykły tekst."""
+        column = {"judge": "judges", "thematic": "thematic",
+                  "legal_basis": "legal_basis"}.get(field)
+        if not column:
+            return []
+        prefix = squash(prefix)
+        if len(prefix) < 2:
+            return []
+        rows = self._rows(
+            f"SELECT DISTINCT {column} AS v FROM orzeczenia WHERE {column} LIKE ? LIMIT 500",
+            [f"%{prefix}%"])
+        prefix_low = prefix.lower()
+        out: list[str] = []
+        seen: set[str] = set()
+        for r in rows:
+            raw = r["v"]
+            if not raw:
+                continue
+            if column == "legal_basis":
+                values = [raw]
+            else:
+                try:
+                    values = json.loads(raw)
+                except (TypeError, ValueError):
+                    continue
+            for v in values:
+                name = (v.get("name") if isinstance(v, dict) else v) or ""
+                if name and prefix_low in name.lower() and name not in seen:
+                    seen.add(name)
+                    out.append(name)
+                    if len(out) >= limit:
+                        return sorted(out)
+        return sorted(out)
+
     # ------------------------------------------------------------------
     def latest(self, limit: int = 20, source: str = "", since: str = "",
               date_field: str = "judgment") -> list[dict[str, Any]]:

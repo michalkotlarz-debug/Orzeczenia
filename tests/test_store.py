@@ -306,6 +306,24 @@ with tempfile.TemporaryDirectory() as tmp:
     store.close()
 
 # ----------------------------------------------------------------------
+print("\n== suggest: podpowiedzi autouzupełniania filtrów ==")
+with tempfile.TemporaryDirectory() as tmp:
+    store = Store(f"sqlite:///{tmp}/test.sqlite3", keep_days=400)
+    store.upsert_documents([
+        doc("SUG1", "wyrok", judges=[{"name": "Jan Kowalski", "role": "przewodniczący"}],
+            thematic=["Zasiedzenie"], legal_basis="art. 172 k.c."),
+        doc("SUG2", "wyrok", judges=[{"name": "Anna Kowalczyk", "role": "przewodniczący"}],
+            thematic=["Zachowek"], legal_basis="art. 991 k.c."),
+    ])
+    check("podpowiedzi sędziego po fragmencie nazwiska",
+         store.suggest("judge", "kowal"), ["Anna Kowalczyk", "Jan Kowalski"])
+    check("podpowiedzi hasła tematycznego", store.suggest("thematic", "zasiedz"), ["Zasiedzenie"])
+    check("podpowiedzi podstawy prawnej", store.suggest("legal_basis", "991"), ["art. 991 k.c."])
+    check("za krótki fragment nie zwraca nic", store.suggest("judge", "k"), [])
+    check("nieznane pole zwraca pustą listę", store.suggest("court", "sąd"), [])
+    store.close()
+
+# ----------------------------------------------------------------------
 print("\n" + "=" * 62)
 if failures:
     print(f"NIEPOWODZENIA ({len(failures)}): " + ", ".join(failures))

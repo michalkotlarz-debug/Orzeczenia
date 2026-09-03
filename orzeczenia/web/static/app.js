@@ -41,9 +41,7 @@
       sig: host.getAttribute("data-sig") || "(bez sygnatury)",
       type: host.getAttribute("data-type") || "orzeczenie",
       court: host.getAttribute("data-court") || "",
-      date: host.getAttribute("data-date") || "",
-      src: host.getAttribute("data-src") || "",
-      srcKey: id.split(":")[0]
+      date: host.getAttribute("data-date") || ""
     };
   }
 
@@ -97,11 +95,10 @@
       return '' +
       '<article class="card" data-doc="' + esc(it.id) + '" data-sig="' + esc(it.sig) +
         '" data-type="' + esc(it.type) + '" data-court="' + esc(it.court) +
-        '" data-date="' + esc(it.date) + '" data-src="' + esc(it.src) + '">' +
+        '" data-date="' + esc(it.date) + '">' +
         '<div class="card-top"><div class="ident">' +
           '<span class="badge">' + esc(it.type).toUpperCase() + '</span>' +
           '<a class="sig" href="' + esc(it.url) + '">' + esc(it.sig) + '</a>' +
-          '<span class="src src-' + esc(it.srcKey) + '">' + esc(it.src) + '</span>' +
         '</div><div class="tools">' +
           '<a class="tool" href="' + esc(it.url) + '/pobierz.txt" title="Pobierz treść">&#10515;</a>' +
           '<button class="tool fav" type="button" data-fav aria-pressed="true">&#9829;</button>' +
@@ -114,6 +111,53 @@
     }).join("");
     bind(list);
   }
+
+  /* Autouzupełnianie pól filtra (sędzia/hasło tematyczne/podstawa prawna) na
+     podstawie wartości już obecnych w bazie - użytkownik trafia w istniejącą
+     pisownię zamiast zgadywać. Debounce, żeby nie odpytywać przy każdym znaku. */
+  var suggestTimers = {};
+  document.querySelectorAll("[data-suggest]").forEach(function (input) {
+    var field = input.getAttribute("data-suggest");
+    var list = document.getElementById("dl-" + field);
+    if (!list) return;
+    input.addEventListener("input", function () {
+      var q = input.value.trim();
+      clearTimeout(suggestTimers[field]);
+      if (q.length < 2) { list.innerHTML = ""; return; }
+      suggestTimers[field] = setTimeout(function () {
+        fetch("/api/podpowiedzi?pole=" + encodeURIComponent(field) + "&q=" + encodeURIComponent(q))
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            list.innerHTML = (d.results || []).map(function (v) {
+              return '<option value="' + v.replace(/"/g, "&quot;") + '">';
+            }).join("");
+          }).catch(function () { /* brak podpowiedzi to nie błąd */ });
+      }, 250);
+    });
+  });
+
+  /* Przełącznik jasny/ciemny - domyślnie idziemy za motywem systemu
+     (prefers-color-scheme w CSS), ten przycisk pozwala wymusić wybór. */
+  var THEME_KEY = "orzecznik:motyw";
+  function systemPrefersDark() {
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+  function applyTheme(mode) {
+    if (mode === "light" || mode === "dark") {
+      document.documentElement.setAttribute("data-theme", mode);
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+    }
+  }
+  document.querySelectorAll("[data-theme-toggle]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var current = document.documentElement.getAttribute("data-theme") ||
+        (systemPrefersDark() ? "dark" : "light");
+      var next = current === "dark" ? "light" : "dark";
+      applyTheme(next);
+      try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* tryb prywatny */ }
+    });
+  });
 
   document.querySelectorAll("[data-filters-toggle]").forEach(function (btn) {
     btn.addEventListener("click", function () {

@@ -20,13 +20,19 @@
         <input type="text" name="signature" value="{{ Q.signature if Q else '' }}" placeholder="np. KIO 1919/16">
       </label>
       <label>Sędzia
-        <input type="text" name="judge" value="{{ Q.judge if Q else '' }}" placeholder="np. Kowalski">
+        <input type="text" name="judge" value="{{ Q.judge if Q else '' }}" placeholder="np. Kowalski"
+               data-suggest="judge" list="dl-judge" autocomplete="off">
+        <datalist id="dl-judge"></datalist>
       </label>
       <label>Hasło tematyczne
-        <input type="text" name="thematic" value="{{ Q.thematic if Q else '' }}" placeholder="np. Zasiedzenie">
+        <input type="text" name="thematic" value="{{ Q.thematic if Q else '' }}" placeholder="np. Zasiedzenie"
+               data-suggest="thematic" list="dl-thematic" autocomplete="off">
+        <datalist id="dl-thematic"></datalist>
       </label>
       <label>Podstawa prawna
-        <input type="text" name="legal_basis" value="{{ Q.legal_basis if Q else '' }}" placeholder="np. art. 410 k.c.">
+        <input type="text" name="legal_basis" value="{{ Q.legal_basis if Q else '' }}" placeholder="np. art. 410 k.c."
+               data-suggest="legal_basis" list="dl-legal_basis" autocomplete="off">
+        <datalist id="dl-legal_basis"></datalist>
       </label>
       <label>Sortowanie
         <select name="sort">
@@ -51,9 +57,9 @@
       </div>
     </div>
     <p class="fhint">{{ icon('info', 'ic') }}
-      Kryteria trafiają wprost do wyszukiwarek portali źródłowych. Sędziego, hasła
-      tematycznego i podstawy prawnej szuka tylko Portal Orzeczeń — użycie ich
-      pomija KIO. Data publikacji jest dostępna wyłącznie dla sądów powszechnych.</p>
+      Wyszukiwanie przeszukuje wyłącznie już zaimportowane orzeczenia. Sędziego,
+      hasła tematycznego i podstawy prawnej szuka tylko wśród sądów powszechnych —
+      użycie ich pomija KIO. Data publikacji jest dostępna wyłącznie dla sądów powszechnych.</p>
 
     <div class="factions">
       <button type="submit">Zastosuj filtry</button>

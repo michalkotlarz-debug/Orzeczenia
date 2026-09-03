@@ -6,6 +6,12 @@
 <title>{% block title %}{{ site_name }}{% endblock %}</title>
 <link rel="stylesheet" href="/static/style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>⚖️</text></svg>">
+<script>
+/* Ustawiane przed narysowaniem strony, żeby nie było błysku złym motywem. */
+(function(){try{var t=localStorage.getItem("orzecznik:motyw");
+  if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);
+}catch(e){}})();
+</script>
 </head>
 <body>
 {% from "_icons.html" import icon %}
@@ -19,6 +25,9 @@
       <a class="fav-link" href="/ulubione">{{ icon('heart', 'ic') }} Ulubione
         <span class="count" data-fav-count hidden>0</span></a>
       {% block nav_extra %}{% endblock %}
+      <button class="theme-toggle" type="button" data-theme-toggle title="Przełącz jasny/ciemny motyw" aria-label="Przełącz jasny/ciemny motyw">
+        {{ icon('sun', 'ic sun') }}{{ icon('moon', 'ic moon') }}
+      </button>
     </nav>
   </div>
 </header>
@@ -27,12 +36,7 @@
 
 <footer class="footer">
   <div class="wrap">
-    <p>Treści orzeczeń pochodzą z
-       <a href="https://orzeczenia.ms.gov.pl" target="_blank" rel="noopener">Portalu Orzeczeń Sądów Powszechnych</a>
-       i <a href="https://orzeczenia.uzp.gov.pl" target="_blank" rel="noopener">bazy orzeczeń KIO</a>.
-       Nowo zauważone orzeczenia trafiają do naszej bazy, żeby wyszukiwanie było szybsze
-       i nie obciążało portali źródłowych; czego jeszcze tam nie ma, dociągamy na żywo.
-       Serwis nieoficjalny; źródłem prawa pozostaje treść oryginalna.</p>
+    <p>Serwis nieoficjalny; źródłem prawa pozostaje treść oryginalna.</p>
   </div>
 </footer>
 

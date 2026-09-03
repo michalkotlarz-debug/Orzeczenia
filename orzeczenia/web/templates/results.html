@@ -11,31 +11,14 @@
   <nav class="tabs">
     {% for key, label in [('', 'Wszystkie')] + source_label.items()|list %}
     <a class="tab {% if source == key %}on{% endif %}" href="/szukaj?{{ params|urlencode_extra('source', key) }}">
-      {{ label }}{% if key and res.totals.get(key) is not none %} <span>{{ res.totals[key] }}</span>{% endif %}
+      {{ label }}
     </a>
     {% endfor %}
   </nav>
 
-  {% for key, msg in res.notes.items() %}
-  <p class="warn note">{{ icon('info', 'ic') }}
-     <b>{{ source_label.get(key, key) }}</b> — {{ msg }}.</p>
-  {% endfor %}
-
-  {% for key, msg in res.errors.items() %}
-  <p class="warn">{{ icon('info', 'ic') }}
-     <b>{{ source_label.get(key, key) }}</b> — {{ msg }} Pokazujemy wyniki z pozostałych źródeł.</p>
-  {% endfor %}
-
   <div class="resultsbar">
     <p>Znaleziono <b>{{ "{:,}".format(res.total).replace(",", " ") }}</b>
        {{ plural_pl(res.total, 'orzeczenie', 'orzeczenia', 'orzeczeń') }}
-       {% if res.totals|length > 1 %}
-       <span class="muted">·
-         {% for k, n in res.totals.items() %}{{ source_label.get(k, k) }}: {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}
-       </span>
-       {% endif %}
-       {% if from_db|default(false) %}<span class="muted">· z naszego indeksu</span>
-       {% else %}<span class="muted">· pobrane na żywo z portali</span>{% endif %}
     </p>
     <div class="resultsbar-actions">
       <span class="pagesize">Na stronie:

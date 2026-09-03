@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_card.html" import result_card %}
 {% block title %}Nowe orzeczenia — {{ site_name }}{% endblock %}
 {% block content %}
 <section class="wrap narrow">
@@ -12,41 +13,18 @@
   <nav class="tabs">
     {% for key, label in [('', 'Wszystkie')] + source_label.items()|list %}
     <a class="tab {% if source == key %}on{% endif %}"
-       href="/nowe{% if key %}?source={{ key }}{% endif %}">{{ label }}</a>
+       href="/nowe?date_field={{ date_field }}{% if key %}&source={{ key }}{% endif %}">{{ label }}</a>
     {% endfor %}
+  </nav>
+  <nav class="tabs">
+    <a class="tab {% if date_field == 'judgment' %}on{% endif %}"
+       href="/nowe?date_field=judgment{% if source %}&source={{ source }}{% endif %}">Data orzeczenia</a>
+    <a class="tab {% if date_field != 'judgment' %}on{% endif %}"
+       href="/nowe?date_field=publication{% if source %}&source={{ source }}{% endif %}">Data publikacji</a>
   </nav>
 
   <div class="cards">
-    {% for r in rows %}
-    <article class="card"
-             data-doc="{{ r.source }}:{{ r.doc_id }}"
-             data-sig="{{ r.signature or '' }}"
-             data-type="{{ r.doc_type or '' }}"
-             data-court="{{ r.court or '' }}"
-             data-date="{{ r.judgment_date or '' }}"
-             data-src="{{ source_label.get(r.source, r.source) }}">
-      <div class="card-top">
-        <div class="ident">
-          <span class="badge">{{ icon('gavel', 'ic') }} {{ (r.doc_type or 'orzeczenie')|upper }}</span>
-          <a class="sig" href="{{ r.url }}">{{ r.signature or '(bez sygnatury)' }}</a>
-          <span class="src src-{{ r.source }}">{{ source_label.get(r.source, r.source) }}</span>
-        </div>
-        <div class="tools">
-          <a class="tool" href="{{ r.url }}/pobierz.txt" title="Pobierz treść">{{ icon('download', 'ic') }}</a>
-          <button class="tool fav" type="button" data-fav title="Dodaj do ulubionych" aria-pressed="false">{{ icon('heart', 'ic') }}</button>
-        </div>
-      </div>
-      <a class="card-link" href="{{ r.url }}">
-        <div class="meta">
-          <span>{{ icon('court', 'ic') }}{{ r.court or '—' }}{% if r.division %} · {{ r.division }}{% endif %}</span>
-          <span title="data orzeczenia">{{ icon('calendar', 'ic') }}{{ r.judgment_date|datepl }}</span>
-          {% if r.panel %}<span>{{ icon('pen', 'ic') }}{{ r.panel|join(' · ') }}</span>{% endif %}
-          {% if r.thematic %}<span>{{ icon('tag', 'ic') }}{{ r.thematic|join(' · ') }}</span>{% endif %}
-        </div>
-        {% if r.excerpt %}<p class="snippet">{{ r.excerpt }}</p>{% endif %}
-      </a>
-    </article>
-    {% else %}
+    {% for r in rows %}{{ result_card(r) }}{% else %}
     <div class="empty">
       <p><b>Nic tu jeszcze nie ma</b></p>
       <p>Brak orzeczeń z ostatnich dwóch tygodni - albo obserwator jeszcze nie zrobił przebiegu.</p>

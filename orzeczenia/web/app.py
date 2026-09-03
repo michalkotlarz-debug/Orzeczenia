@@ -1,11 +1,10 @@
-"""Orzecznik - nakładka na publiczne portale orzecznictwa.
+"""Orzecznik - wyszukiwarka orzeczeń zbieranych do własnej bazy.
 
-Wyszukiwanie i otwieranie dokumentów czyta najpierw z własnej bazy (zbieranej
-przez obserwatora - patrz `orzeczenia/obserwator.py`), bo to szybsze i nie
-obciąża portali źródłowych. Dopiero gdy czegoś tam jeszcze nie ma, dociągamy
-na żywo (`registry.search()`/`registry.document()`) - użytkownik nigdy nie
-dostaje pustej strony tylko dlatego, że baza jeszcze nie zdążyła czegoś zebrać.
-"""
+Warstwa web czyta WYŁĄCZNIE z własnej bazy (zbieranej w tle przez obserwatora -
+patrz `orzeczenia/obserwator.py`, jedyne miejsce, które i tak łączy się z
+portalami źródłowymi). Jeśli czegoś jeszcze nie zaimportowano, użytkownik po
+prostu tego nie zobaczy - strona nigdy nie odpytuje portali na żywo w reakcji
+na odwiedziny."""
 from __future__ import annotations
 
 import csv
@@ -25,9 +24,8 @@ from fastapi.templating import Jinja2Templates
 
 from ..config import load_config
 from ..format import date_pl, plural_pl
-from ..http import RateLimited, SourceUnavailable
 from ..sources import Query, Registry
-from ..sources.base import Hit, SearchPage
+from ..sources.base import SearchPage
 from ..store import Store
 
 log = logging.getLogger("orzecznik.web")
@@ -133,65 +131,36 @@ def _clean_per_page(value: int) -> int:
 
 
 def _search(query: Query, page: int, source: str,
-           per_page: int = DEFAULT_PAGE_SIZE) -> tuple[SearchPage, bool]:
-    """(wynik, czy_z_wlasnej_bazy). Dla prostych fraz próbujemy najpierw bazy -
-    szybciej i bez obciążania portalu; gdy nic tam nie ma (jeszcze niezaimportowane
-    albo baza niedostępna), wracamy do dzisiejszego zachowania: pytamy na żywo."""
+           per_page: int = DEFAULT_PAGE_SIZE) -> SearchPage:
+    """Wyniki wyłącznie z własnej bazy - patrz nagłówek modułu. Bez żadnego
+    kryterium (`query.is_empty()`) nie zwraca nic, tak jak portal źródłowy
+    dawniej przy pustym zapytaniu."""
     per_page = _clean_per_page(per_page)
     store = get_store()
+    if store is None or query.is_empty():
+        return SearchPage(page=page, per_page=per_page)
 
     if _is_simple_phrase(query) and query.sort == "relevance":
-        if store is not None:
-            rows, total = store.search_fulltext(
-                query.phrase, source=source, limit=per_page, offset=(page - 1) * per_page)
-            if rows:
-                res = SearchPage(hits=[Store.to_hit(r) for r in rows],
-                                 page=page, per_page=per_page)
-                res.totals = ({source: total} if source
-                              else store.count_fulltext_by_source(query.phrase))
-                return res, True
-        return registry.search(query, page=page, only=source, per_page=per_page), False
+        rows, total = store.search_fulltext(
+            query.phrase, source=source, limit=per_page, offset=(page - 1) * per_page)
+        res = SearchPage(hits=[Store.to_hit(r) for r in rows], page=page, per_page=per_page)
+        res.totals = ({source: total} if source
+                      else store.count_fulltext_by_source(query.phrase))
+        return res
 
-    # Zapytania z filtrami (sygnatura/sędzia/podstawa prawna/hasło/zakres dat) -
-    # dotychczas szły WYŁĄCZNIE na żywo, więc awaria/blokada portalu oznaczała
-    # zero wyników, mimo że własna baza mogła już mieć pasujące pozycje.
-    # Czytamy więc najpierw z bazy i ZAWSZE dokładamy to, co ona ma, nawet gdy
-    # portal później zawiedzie - baza nie znika z wyniku z powodu błędu na żywo.
-    db_hits: list[Hit] = []
-    db_totals: dict[str, int] = {}
-    if store is not None and not query.is_empty():
-        rows, total = store.search_advanced(
-            phrase=query.phrase, source=source, signature=query.signature,
-            judge=query.judge, legal_basis=query.legal_basis, thematic=query.thematic,
-            date_field=query.date_field, date_from=query.date_from, date_to=query.date_to,
-            sort=query.sort, limit=per_page, offset=(page - 1) * per_page)
-        db_hits = [Store.to_hit(r) for r in rows]
-        if db_hits:
-            db_totals = ({source: total} if source else
-                        store.count_advanced_by_source(
-                            phrase=query.phrase, signature=query.signature, judge=query.judge,
-                            legal_basis=query.legal_basis, thematic=query.thematic,
-                            date_field=query.date_field, date_from=query.date_from,
-                            date_to=query.date_to))
-
-    if len(db_hits) >= per_page:
-        # Strona w całości pokryta własną bazą - nie ma potrzeby pytać na żywo.
-        return SearchPage(hits=db_hits[:per_page], totals=db_totals,
-                          page=page, per_page=per_page), True
-
-    res = registry.search(query, page=page, only=source, per_page=per_page)
-    known = {(h.source, h.doc_id) for h in res.hits}
-    live_count = len(res.hits)
-    for h in db_hits:
-        if (h.source, h.doc_id) not in known:
-            res.hits.append(h)
-            known.add((h.source, h.doc_id))
-    res.hits = res.hits[:per_page]
-    for k, v in db_totals.items():
-        res.totals[k] = max(res.totals.get(k, 0), v)
-    # "z naszego indeksu" tylko gdy na żywo faktycznie nic nowego nie doszło -
-    # w pozostałych przypadkach etykieta "na żywo" jest bliższa prawdzie.
-    return res, bool(db_hits) and live_count == 0
+    rows, total = store.search_advanced(
+        phrase=query.phrase, source=source, signature=query.signature,
+        judge=query.judge, legal_basis=query.legal_basis, thematic=query.thematic,
+        date_field=query.date_field, date_from=query.date_from, date_to=query.date_to,
+        sort=query.sort, limit=per_page, offset=(page - 1) * per_page)
+    res = SearchPage(hits=[Store.to_hit(r) for r in rows], page=page, per_page=per_page)
+    res.totals = ({source: total} if source else
+                  store.count_advanced_by_source(
+                      phrase=query.phrase, signature=query.signature, judge=query.judge,
+                      legal_basis=query.legal_basis, thematic=query.thematic,
+                      date_field=query.date_field, date_from=query.date_from,
+                      date_to=query.date_to))
+    return res
 
 
 # ----------------------------------------------------------------------
@@ -221,12 +190,11 @@ def search_page(
                    legal_basis=legal_basis, date_field=date_field,
                    date_from=date_from, date_to=date_to, sort=sort)
     per_page = _clean_per_page(per_page)
-    res, from_db = _search(query, page=page, source=source, per_page=per_page)
+    res = _search(query, page=page, source=source, per_page=per_page)
     params = {k: v for k, v in request.query_params.items() if k != "page" and v}
     return templates.TemplateResponse(request, "results.html", {
         "q": q, "res": res, "query": query, "page": page, "params": params,
-        "source": source, "from_db": from_db, "per_page": per_page,
-        "page_sizes": PAGE_SIZES})
+        "source": source, "per_page": per_page, "page_sizes": PAGE_SIZES})
 
 
 @app.get("/orzeczenie/{source}/{doc_id}", response_class=HTMLResponse)
@@ -234,22 +202,19 @@ def document_page(request: Request, source: str, doc_id: str, q: str = ""):
     store = get_store()
     doc = store.get_document(source, doc_id) if store else None
     if doc is None:
-        try:
-            doc = registry.document(source, doc_id)
-        except (RateLimited, SourceUnavailable, ValueError) as exc:
-            return templates.TemplateResponse(request, "blad.html", {
-                "tytul": "Nie udało się pobrać orzeczenia", "opis": str(exc)}, status_code=502)
-    else:
-        doc["source_label"] = registry.labels.get(source, source)
+        return templates.TemplateResponse(request, "blad.html", {
+            "tytul": "Nie znaleziono orzeczenia",
+            "opis": "Tego orzeczenia nie ma (jeszcze) w naszej bazie."}, status_code=404)
     return templates.TemplateResponse(request, "document.html", {"d": doc, "q": q})
 
 
 @app.get("/orzeczenie/{source}/{doc_id}/pobierz.txt")
 def download_document(source: str, doc_id: str):
-    try:
-        d = registry.document(source, doc_id)
-    except (RateLimited, SourceUnavailable, ValueError) as exc:
-        return JSONResponse({"error": str(exc)}, status_code=502)
+    store = get_store()
+    d = store.get_document(source, doc_id) if store else None
+    if d is None:
+        return JSONResponse({"error": "orzeczenie nie zostało jeszcze zaimportowane"},
+                            status_code=404)
 
     lines = [
         f"Sygnatura:        {d.get('signature') or '—'}",
@@ -264,7 +229,6 @@ def download_document(source: str, doc_id: str):
         "Skład orzekający: " + (", ".join(f"{j['name']} ({j['role']})"
                                           for j in d.get("judges") or []) or "—"),
         "Hasła tematyczne: " + (", ".join(d.get("thematic") or []) or "—"),
-        f"Źródło:           {d.get('source_url')}",
         "", "=" * 72, "",
     ]
     if d.get("sentencja"):
@@ -285,15 +249,17 @@ NOWE_LOOKBACK_DAYS = 14
 
 
 @app.get("/nowe", response_class=HTMLResponse)
-def new_page(request: Request, source: str = "", limit: int = Q(50, ge=1, le=200)):
-    """Orzeczenia opublikowane w ostatnich dwóch tygodniach (data publikacji -
-    okno przesuwa się razem z dzisiejszą datą), zebrane przez obserwatora."""
+def new_page(request: Request, source: str = "", date_field: str = "publication",
+            limit: int = Q(50, ge=1, le=200)):
+    """Orzeczenia z ostatnich dwóch tygodni (okno przesuwa się razem z
+    dzisiejszą datą) wg wybranej daty - orzeczenia albo publikacji."""
+    date_field = date_field if date_field in ("judgment", "publication") else "publication"
     store = get_store()
     since = (date.today() - timedelta(days=NOWE_LOOKBACK_DAYS)).isoformat()
-    rows = (store.latest(limit=limit, source=source, since=since, date_field="publication")
+    rows = (store.latest(limit=limit, source=source, since=since, date_field=date_field)
            if store else [])
     return templates.TemplateResponse(request, "nowe.html", {
-        "rows": rows, "source": source,
+        "rows": rows, "source": source, "date_field": date_field,
         "blad": _store_error if store is None else ""})
 
 
@@ -311,15 +277,13 @@ def export_csv(q: str = "", signature: str = "", judge: str = "", thematic: str 
     query = _query(phrase=q, signature=signature, judge=judge, thematic=thematic,
                    legal_basis=legal_basis, date_field=date_field,
                    date_from=date_from, date_to=date_to, sort=sort)
-    res = registry.search(query, page=page, only=source)
+    res = _search(query, page=page, source=source, per_page=DEFAULT_PAGE_SIZE)
 
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=";")
-    w.writerow(["sygnatura", "typ", "data_orzeczenia", "data_publikacji",
-                "sad_organ", "zrodlo", "adres_oryginalu"])
+    w.writerow(["sygnatura", "typ", "data_orzeczenia", "data_publikacji", "sad_organ"])
     for h in res.hits:
-        w.writerow([h.signature, h.doc_type, h.judgment_date, h.publication_date,
-                    h.court, registry.labels.get(h.source, h.source), h.source_url])
+        w.writerow([h.signature, h.doc_type, h.judgment_date, h.publication_date, h.court])
     return StreamingResponse(
         iter([("﻿" + buf.getvalue()).encode("utf-8")]),
         media_type="text/csv; charset=utf-8",
@@ -337,18 +301,29 @@ def api_search(q: str = "", signature: str = "", judge: str = "", thematic: str 
                    legal_basis=legal_basis, date_field=date_field,
                    date_from=date_from, date_to=date_to, sort=sort)
     per_page = _clean_per_page(per_page)
-    res, from_db = _search(query, page=page, source=source, per_page=per_page)
+    res = _search(query, page=page, source=source, per_page=per_page)
     return {"page": page, "per_page": per_page, "totals": res.totals, "total": res.total,
-            "errors": res.errors, "notes": res.notes, "z_bazy": from_db,
             "results": [{**h.__dict__, "url": h.url} for h in res.hits]}
 
 
 @app.get("/api/orzeczenie/{source}/{doc_id}")
 def api_document(source: str, doc_id: str):
-    try:
-        return registry.document(source, doc_id)
-    except (RateLimited, SourceUnavailable, ValueError) as exc:
-        return JSONResponse({"error": str(exc)}, status_code=502)
+    store = get_store()
+    doc = store.get_document(source, doc_id) if store else None
+    if doc is None:
+        return JSONResponse({"error": "orzeczenie nie zostało jeszcze zaimportowane"},
+                            status_code=404)
+    return doc
+
+
+@app.get("/api/podpowiedzi")
+def api_suggest(pole: str = "", q: str = ""):
+    """Podpowiedzi do autouzupełniania filtrów (sędzia/hasło tematyczne/podstawa
+    prawna) na podstawie wartości już obecnych w bazie."""
+    store = get_store()
+    if store is None or pole not in ("judge", "thematic", "legal_basis"):
+        return {"results": []}
+    return {"results": store.suggest(pole, q)}
 
 
 @app.get("/api/nowe")

@@ -10,12 +10,10 @@
            data-sig="{{ d.signature or '' }}"
            data-type="{{ d.doc_type or '' }}"
            data-court="{{ d.court or '' }}"
-           data-date="{{ d.judgment_date or '' }}"
-           data-src="{{ d.source_label }}">
+           data-date="{{ d.judgment_date or '' }}">
     <header class="doc-head">
       <div class="ident">
         <span class="badge">{{ icon('gavel','ic') }} {{ (d.doc_type or 'orzeczenie')|upper }}</span>
-        <span class="src src-{{ d.source }}">{{ d.source_label }}</span>
       </div>
       <h1>{{ d.signature or '(bez sygnatury)' }}</h1>
       <p class="doc-sub">{{ d.court or '—' }}{% if d.division %} · {{ d.division }}{% endif %}
@@ -23,7 +21,6 @@
       <div class="doc-tools">
         <a class="ghost" href="/orzeczenie/{{ d.source }}/{{ d.doc_id }}/pobierz.txt">{{ icon('download','ic') }} Pobierz tekst</a>
         <button class="ghost fav" type="button" data-fav aria-pressed="false">{{ icon('heart','ic') }} <span class="lbl">Do ulubionych</span></button>
-        {% if d.get('pdf_url') %}<a class="ghost" href="{{ d.get('pdf_url') }}" target="_blank" rel="noopener">{{ icon('download','ic') }} PDF ze źródła</a>{% endif %}
       </div>
     </header>
 
@@ -39,7 +36,6 @@
       {% endif %}
       {% if d.outcome %}<div><dt>{{ icon('check','ic') }} Rozstrzygnięcie</dt><dd>{{ d.outcome }}</dd></div>{% endif %}
       {% if d.purchaser %}<div><dt>{{ icon('court','ic') }} Zamawiający</dt><dd>{{ d.purchaser }}</dd></div>{% endif %}
-      {% if d.get('procedure') %}<div><dt>{{ icon('info','ic') }} Tryb postępowania</dt><dd>{{ d.get('procedure') }}</dd></div>{% endif %}
       {% if d.thematic %}<div class="wide"><dt>{{ icon('tag','ic') }} Hasła tematyczne</dt><dd>
         {% for t in d.thematic %}<span class="chip">{{ t }}</span>{% endfor %}</dd></div>{% endif %}
       {% if d.legal_basis %}<div class="wide"><dt>{{ icon('info','ic') }} Podstawa prawna</dt><dd>{{ d.legal_basis }}</dd></div>{% endif %}
