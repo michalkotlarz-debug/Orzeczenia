@@ -251,6 +251,13 @@ class Store:
     def _sql(self, sql: str) -> str:
         return sql.replace("?", "%s") if self.is_pg else sql
 
+    def _like(self) -> str:
+        """`LIKE` w Postgresie rozróżnia wielkość liter (inaczej niż w SQLite,
+        gdzie dla ASCII jest domyślnie bez rozróżniania) - filtry po sędzim,
+        sygnaturze, haśle i podstawie prawnej mają działać niezależnie od
+        wielkości liter wpisanych przez użytkownika."""
+        return "ILIKE" if self.is_pg else "LIKE"
+
     def _exec_script(self, script: str) -> None:
         with self._lock:
             if self.is_pg:
@@ -572,20 +579,21 @@ class Store:
         if source:
             where.append("source = ?")
             params.append(source)
+        like = self._like()
         if signature := squash(signature):
-            where.append("signature LIKE ?")
+            where.append(f"signature {like} ?")
             params.append(f"%{signature}%")
         if judge := squash(judge):
             # `judges` to zserializowany JSON ([{"name":...,"role":...}]) - LIKE po
             # surowym tekście wystarcza do dopasowania nazwiska, bez potrzeby
             # JSONB-owych operatorów (SQLite go nie ma, a to i tak zwykły tekst).
-            where.append("judges LIKE ?")
+            where.append(f"judges {like} ?")
             params.append(f"%{judge}%")
         if legal_basis := squash(legal_basis):
-            where.append("legal_basis LIKE ?")
+            where.append(f"legal_basis {like} ?")
             params.append(f"%{legal_basis}%")
         if thematic := squash(thematic):
-            where.append("thematic LIKE ?")
+            where.append(f"thematic {like} ?")
             params.append(f"%{thematic}%")
         date_col = "publication_date" if date_field == "publication" else "judgment_date"
         if d := _as_iso_date(date_from):
@@ -672,7 +680,7 @@ class Store:
         if len(prefix) < 2:
             return []
         rows = self._rows(
-            f"SELECT DISTINCT {column} AS v FROM orzeczenia WHERE {column} LIKE ? LIMIT 500",
+            f"SELECT DISTINCT {column} AS v FROM orzeczenia WHERE {column} {self._like()} ? LIMIT 500",
             [f"%{prefix}%"])
         prefix_low = prefix.lower()
         out: list[str] = []
