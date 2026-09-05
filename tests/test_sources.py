@@ -293,6 +293,14 @@ check("data ogłoszenia na stronie tytułowej -> usunięta (jest już w metryce)
 check("samotny numer punktu bez treści -> sklejony z następnym akapitem",
      clean_pdf_text("2)\n\npodmiotów, o których mowa w art. 18."),
      "2) podmiotów, o których mowa w art. 18.")
+check("prawdziwy cytat 'poz. NNNN i MMMM' w środku zdania NIE jest usuwany",
+     clean_pdf_text("publicznych (Dz. U. z 2024 r. poz. 1669 i 1863) wprowadza się zmiany."),
+     "publicznych (Dz. U. z 2024 r. poz. 1669 i 1863) wprowadza się zmiany.")
+check("nagłówki sklejone jednym złamaniem wiersza z tytułem aktu -> też usunięte",
+     clean_pdf_text("DZIENNIK USTAW\nRZECZYPOSPOLITEJ POLSKIEJ\nWarszawa, dnia 30 grudnia 2025 r.\n"
+                    "Poz. 1881\nUSTAWA\nz dnia 4 grudnia 2025 r.\n\no zmianie ustawy.",
+                    act_type="Ustawa"),
+     "USTAWA z dnia 4 grudnia 2025 r.\no zmianie ustawy.")
 check("puste wejście nie crashuje", clean_pdf_text(None), None)
 check("idempotentne - drugie przejście nic już nie zmienia",
      clean_pdf_text(clean_pdf_text("nastę-\n\npujące  słowo", act_type="Ustawa")),

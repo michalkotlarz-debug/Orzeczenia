@@ -385,16 +385,24 @@ _PDF_HEADER_WORDS = {
 # na żywo: "Dziennik Ustaw" / "– 2 –" / "Poz. 1881" jako osobne "akapity"
 # porozrzucane w środku treści.
 _PDF_NOISE_RES = [
-    # Nie kotwiczone do początku/końca linii - pdfminer bywa niekonsekwentny
-    # w tym, czy te elementy trafiają na osobną linię, czy sklejają się z
-    # sąsiednim tekstem jednym złamaniem wiersza (sprawdzone na żywo: raz
-    # tak, raz inaczej dla różnych aktów z tego samego dziennika).
-    re.compile(r"dziennik ustaw(\s+rzeczypospolitej polskiej)?", re.IGNORECASE),
-    re.compile(r"dziennik urzędowy rzeczypospolitej polskiej", re.IGNORECASE),
-    re.compile(r"\bmonitor polski\b", re.IGNORECASE),
-    re.compile(r"[–—-]\s*\d+\s*[–—-]"),
-    re.compile(r"\bpoz\.\s*\d+\.?", re.IGNORECASE),
-    re.compile(r"\bwarszawa,\s*dnia\s+\d{1,2}\s+\w+\s+\d{4}\s*r\.?", re.IGNORECASE),
+    # Zakotwiczone do POCZĄTKU WIERSZA (poprzedzone `\n` albo początkiem
+    # tekstu) - inaczej "poz. 1669" wycięłoby też prawdziwy cytat prawny w
+    # środku zdania, np. "(Dz. U. z 2024 r. poz. 1669 i 1863)" (sprawdzone
+    # na żywo - pierwsza wersja tego wzorca psuła takie cytaty). Wzorzec
+    # "poz." dodatkowo NIE dopasowuje, gdy po numerze następuje "i"/","
+    # i kolejna liczba - to znak, że to właśnie taki cytat z kilkoma
+    # pozycjami, nie samotny numer strony. pdfminer bywa niekonsekwentny w
+    # tym, czy nagłówek/stopka strony trafia na osobną linię, czy skleja
+    # się z sąsiednim tekstem jednym złamaniem wiersza (sprawdzone na żywo:
+    # raz tak, raz inaczej dla różnych aktów z tego samego dziennika) -
+    # dlatego dopasowanie działa też, gdy szum jest na początku sklejonego
+    # wiersza, nie tylko gdy stoi w całości sam.
+    re.compile(r"(?:(?<=\n)|^)\s*dziennik ustaw(\s+rzeczypospolitej polskiej)?\s*", re.IGNORECASE),
+    re.compile(r"(?:(?<=\n)|^)\s*dziennik urzędowy rzeczypospolitej polskiej\s*", re.IGNORECASE),
+    re.compile(r"(?:(?<=\n)|^)\s*monitor polski\s*", re.IGNORECASE),
+    re.compile(r"(?:(?<=\n)|^)\s*[–—-]\s*\d+\s*[–—-]\s*"),
+    re.compile(r"(?:(?<=\n)|^)\s*poz\.\s*\d+\.?(?!\s*[,i]\s*\d)\s*", re.IGNORECASE),
+    re.compile(r"(?:(?<=\n)|^)\s*warszawa,\s*dnia\s+\d{1,2}\s+\w+\s+\d{4}\s*r\.?\s*", re.IGNORECASE),
 ]
 # Numer/litera punktu, który w PDF-ie wypadł na końcu strony osobno od
 # właściwej treści punktu (np. "2)" jako cały "akapit", dalszy ciąg dopiero
@@ -419,7 +427,8 @@ def clean_pdf_text(text: str | None, act_type: str | None = None) -> str | None:
     # z sąsiednim tekstem jednym złamaniem wiersza (oba warianty widziane
     # na żywo dla różnych aktów tego samego dziennika).
     for rx in _PDF_NOISE_RES:
-        text = rx.sub(" ", text)
+        text = rx.sub("\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
     act_type_squashed = (act_type or "").replace(" ", "").upper()
     blocks: list[str] = []
     for block in re.split(r"\n{2,}", text):
