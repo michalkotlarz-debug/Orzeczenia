@@ -385,11 +385,16 @@ _PDF_HEADER_WORDS = {
 # na żywo: "Dziennik Ustaw" / "– 2 –" / "Poz. 1881" jako osobne "akapity"
 # porozrzucane w środku treści.
 _PDF_NOISE_RES = [
-    re.compile(r"^(dziennik ustaw|monitor polski)(\s+rzeczypospolitej polskiej)?$", re.IGNORECASE),
-    re.compile(r"^dziennik urzędowy rzeczypospolitej polskiej$", re.IGNORECASE),
-    re.compile(r"^[–—-]\s*\d+\s*[–—-]$"),
-    re.compile(r"^poz\.\s*\d+\.?$", re.IGNORECASE),
-    re.compile(r"^warszawa,\s*dnia\s+.+\d{4}\s*r\.?$", re.IGNORECASE),
+    # Nie kotwiczone do początku/końca linii - pdfminer bywa niekonsekwentny
+    # w tym, czy te elementy trafiają na osobną linię, czy sklejają się z
+    # sąsiednim tekstem jednym złamaniem wiersza (sprawdzone na żywo: raz
+    # tak, raz inaczej dla różnych aktów z tego samego dziennika).
+    re.compile(r"dziennik ustaw(\s+rzeczypospolitej polskiej)?", re.IGNORECASE),
+    re.compile(r"dziennik urzędowy rzeczypospolitej polskiej", re.IGNORECASE),
+    re.compile(r"\bmonitor polski\b", re.IGNORECASE),
+    re.compile(r"[–—-]\s*\d+\s*[–—-]"),
+    re.compile(r"\bpoz\.\s*\d+\.?", re.IGNORECASE),
+    re.compile(r"\bwarszawa,\s*dnia\s+\d{1,2}\s+\w+\s+\d{4}\s*r\.?", re.IGNORECASE),
 ]
 # Numer/litera punktu, który w PDF-ie wypadł na końcu strony osobno od
 # właściwej treści punktu (np. "2)" jako cały "akapit", dalszy ciąg dopiero
@@ -408,6 +413,13 @@ def clean_pdf_text(text: str | None, act_type: str | None = None) -> str | None:
     if not text:
         return text
     text = _PDF_DEHYPHEN_RE.sub(r"\1\2", text)
+    # Szum usuwamy PIERWSZE, na całym tekście naraz, zanim cokolwiek
+    # dzielimy na akapity - pdfminer bywa niekonsekwentny w tym, czy
+    # nagłówek/stopka strony trafia na osobny wiersz/blok, czy skleja się
+    # z sąsiednim tekstem jednym złamaniem wiersza (oba warianty widziane
+    # na żywo dla różnych aktów tego samego dziennika).
+    for rx in _PDF_NOISE_RES:
+        text = rx.sub(" ", text)
     act_type_squashed = (act_type or "").replace(" ", "").upper()
     blocks: list[str] = []
     for block in re.split(r"\n{2,}", text):
@@ -415,10 +427,8 @@ def clean_pdf_text(text: str | None, act_type: str | None = None) -> str | None:
         # przez pdfminer jako jeden blok) to zawijanie linii w PDF-ie, nie
         # nowy akapit - zamieniamy na spację, nie na koniec akapitu.
         block = re.sub(r"\s*\n\s*", " ", block).strip()
-        block = re.sub(r" {2,}", " ", block)
+        block = re.sub(r" {2,}", " ", block).strip()
         if not block:
-            continue
-        if any(rx.match(block) for rx in _PDF_NOISE_RES):
             continue
         squashed = block.replace(" ", "")
         if squashed.isupper() and (squashed in _PDF_HEADER_WORDS or
