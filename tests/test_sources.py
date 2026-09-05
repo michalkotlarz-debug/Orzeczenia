@@ -308,6 +308,13 @@ check("przypis o zmianach tekstu jednolitego -> usunięty",
 check("dwa samotne markery pod rząd + dwie treści pod rząd -> sparowane po kolei",
      clean_pdf_text("1)\n\n2)\n\nsą członkami Komisji lub\n\nposiadają stopień naukowy."),
      "1) są członkami Komisji lub\n2) posiadają stopień naukowy.")
+check("rozstrzelony nagłówek z organem wydającym -> tylko typ aktu",
+     clean_pdf_text("RO ZPO R ZĄ D ZE N I E M INI S TR A F IN AN SÓ W I GO SPO DA RK I 1)\n\n"
+                    "z dnia 5 maja 2000 r.", act_type="Rozporządzenie"),
+     "ROZPORZĄDZENIE\nz dnia 5 maja 2000 r.")
+check("normalny naglowek z dlugimi wyrazami nie jest tykany",
+     clean_pdf_text("SEJM RZECZYPOSPOLITEJ POLSKIEJ UCHWALIŁ CO NASTĘPUJE"),
+     "SEJM RZECZYPOSPOLITEJ POLSKIEJ UCHWALIŁ CO NASTĘPUJE")
 check("puste wejście nie crashuje", clean_pdf_text(None), None)
 check("idempotentne - drugie przejście nic już nie zmienia",
      clean_pdf_text(clean_pdf_text("nastę-\n\npujące  słowo", act_type="Ustawa")),

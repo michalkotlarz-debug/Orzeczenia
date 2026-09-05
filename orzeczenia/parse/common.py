@@ -379,6 +379,17 @@ _PDF_HEADER_WORDS = {
     "OŚWIADCZENIERZĄDOWE", "UMOWAMIĘDZYNARODOWA", "DZIENNIKUSTAW",
     "RZECZYPOSPOLITEJPOLSKIEJ", "MONITORPOLSKI",
 }
+
+
+def _looks_like_tracked_heading(block: str) -> bool:
+    """Rozpoznaje rozstrzelony liternictwem nagłówek (jak "US T AW A" czy
+    dłuższe "RO ZPO R ZĄ D ZE N I E M INI S TR A..." dla rozporządzeń z
+    organem wydającym w tytule) po kształcie: same wielkie litery i bardzo
+    krótkie "słowa" - normalny tekst prawny tak nie wygląda."""
+    tokens = block.split()
+    if len(tokens) < 5:
+        return False
+    return sum(len(t) for t in tokens) / len(tokens) <= 3
 # Nagłówek/stopka powtarzana u góry KAŻDEJ strony PDF-a (nazwa dziennika,
 # numer strony, numer pozycji) - zbędna, bo te same informacje (data, numer
 # pozycji) i tak są już pokazane w metryce aktu wyżej na stronie. Sprawdzone
@@ -456,6 +467,21 @@ def clean_pdf_text(text: str | None, act_type: str | None = None) -> str | None:
         if squashed.isupper() and (squashed in _PDF_HEADER_WORDS or
                                    (act_type_squashed and squashed == act_type_squashed)):
             block = squashed
+        elif squashed.isupper() and _looks_like_tracked_heading(block):
+            if act_type_squashed and squashed.startswith(act_type_squashed):
+                # Rozstrzelony nagłówek z organem wydającym w tytule (typowe
+                # dla rozporządzeń, np. "ROZPORZĄDZENIE MINISTRA FINANSÓW
+                # I GOSPODARKI") - sam typ aktu da się bezpiecznie odtworzyć,
+                # ale KTO go wydał już nie (bez słownika nazw organów w
+                # dopełniaczu) - ta informacja jest zresztą już osobno
+                # pokazana w metryce aktu (Organ wydający), więc resztę
+                # pomijamy zamiast zostawiać rozjechaną.
+                block = act_type_squashed
+            else:
+                # Rozstrzelony nagłówek bez rozpoznanego typu aktu na
+                # początku - nie da się bezpiecznie zrekonstruować, lepiej
+                # pominąć niż pokazać rozjechany na stronie.
+                continue
         blocks.append(block)
     # Samotny numer/litera punktu bez treści (np. "2)" jako cały "akapit",
     # bo w PDF-ie wypadł na końcu strony) - sklej z następnym akapitem.
