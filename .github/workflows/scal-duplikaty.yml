@@ -1,5 +1,11 @@
 name: scal-duplikaty
 
+# NIEAKTUALNE od migracji na VPS (patrz STAN-INFRASTRUKTURY.md) - sekret
+# DATABASE_URL ponizej wskazuje na juz skasowana baze Neon; produkcyjna baza
+# (Postgres na VPS) jest dostepna tylko lokalnie (127.0.0.1), wiec ten
+# workflow i tak by sie do niej nie dodzwonil. Rownowaznik na VPS: SSH +
+# `sudo docker exec orzecznik python -m orzeczenia.cli scal-duplikaty ...`.
+#
 # Jednorazowe (ale bezpieczne do wielokrotnego uruchomienia) porządkowanie:
 # scala pary wyrok+uzasadnienie, które trafiły do produkcyjnej bazy jako dwa
 # osobne rekordy PRZED wprowadzeniem scalania na bieżąco w obserwatorze.

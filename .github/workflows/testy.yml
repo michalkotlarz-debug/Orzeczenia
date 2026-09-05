@@ -20,3 +20,5 @@ jobs:
       - run: python tests/test_sources.py
       - run: python tests/test_nsa.py
       - run: python tests/test_templates.py
+      - run: python tests/test_store.py
+      - run: python tests/test_ms_merge.py

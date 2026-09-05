@@ -1,10 +1,15 @@
 name: admin-cli
 
-# Ogólny "właz serwisowy": ręczne uruchomienie dowolnego istniejącego polecenia
-# `orzeczenia.cli` na produkcyjnej bazie (Neon), bez potrzeby dodawania osobnego
-# workflow pliku na każdą jednorazową operację diagnostyczną/porządkową (patrz
-# `pokaz`, `scal-recznie`, `scal-duplikaty`, `baza`). Wymaga tego samego
-# sekretu DATABASE_URL co pozostałe workflow.
+# NIEAKTUALNE od migracji na VPS (patrz STAN-INFRASTRUKTURY.md) - baza
+# produkcyjna to teraz PostgreSQL lokalny na VPS (127.0.0.1), nieosiagalny
+# z GitHub Actions. Sekret DATABASE_URL ponizej wskazuje na juz skasowana
+# baze Neon. Do jednorazowych operacji administracyjnych na produkcji uzyj
+# zamiast tego SSH na VPS: `sudo docker exec orzecznik python -m
+# orzeczenia.cli ...`. Zostawione jako szablon/dokumentacja, nie do uruchamiania.
+#
+# Oryginalny opis: ogólny "właz serwisowy" - ręczne uruchomienie dowolnego
+# istniejącego polecenia `orzeczenia.cli` na produkcyjnej bazie (patrz
+# `pokaz`, `scal-recznie`, `scal-duplikaty`, `baza`).
 
 on:
   workflow_dispatch:

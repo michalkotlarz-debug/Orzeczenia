@@ -1,5 +1,14 @@
 # Orzecznik — wyszukiwarka orzeczeń na żywo
 
+> ⚠ **Ten opis jest częściowo nieaktualny.** Aplikacja od pewnego czasu czyta
+> wyłącznie z własnej bazy (nie na żywo z portali — patrz kod w
+> `orzeczenia/web/app.py`), jest wdrożona na własnym VPS pod `portalorzeczen.pl`
+> (nie na Vercelu), i doszedł osobny moduł „Akty prawne" (Dziennik Ustaw /
+> Monitor Polski). Aktualny, prawdziwy opis wdrożenia:
+> **[STAN-INFRASTRUKTURY.md](STAN-INFRASTRUKTURY.md)**. Reszta tego pliku
+> nadal trafnie opisuje logikę parsowania źródeł i historię decyzji, ale
+> sekcje o Vercelu/Railway/Fly.io i o architekturze live-proxy są przestarzałe.
+
 Nakładka na trzy publiczne portale orzecznictwa. **Archiwum zostaje tam, gdzie
 jest.** Każde wyszukanie i każde otwarcie orzeczenia to zapytanie wysyłane
 w tej samej chwili do serwisu źródłowego — my tylko parsujemy odpowiedź
