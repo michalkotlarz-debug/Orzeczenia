@@ -63,6 +63,8 @@ class PollConfig:
     lookback_days: int = 14      # jak daleko wstecz patrzy jeden przebieg
     max_new_per_run: int = 400   # bezpiecznik na wypadek lawiny wyników
     token: str = ""              # sekret dla /api/obserwator/uruchom (ENV: ORZECZNIK_POLL_TOKEN)
+    archive_fallback: bool = True        # gdy brak nowości, dociagaj starsze archiwum wstecz
+    archive_fallback_limit: int = 150    # ile pozycji archiwum najwyzej za jeden taki przebieg
 
 
 @dataclass

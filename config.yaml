@@ -59,17 +59,22 @@ sources:
 
 # ------------------------------------------------------------------
 # Obserwator - cykliczne sprawdzanie, czy pojawiły się nowe orzeczenia.
-# Uruchamiany z zewnątrz: `python -m orzeczenia obserwuj` (cron / Railway)
-# albo GET /api/obserwator/uruchom z nagłówkiem tokenu (Vercel Cron).
+# Uruchamiany z zewnątrz: `python -m orzeczenia obserwuj` (cron) albo
+# GET /api/obserwator/uruchom z nagłówkiem tokenu (cron na VPS).
+# Gdy portal MS nie ma nic nowszego niż to, co już mamy, obserwator sam
+# dociąga kolejną porcję starszego archiwum (od najnowszych nieznanych) -
+# patrz archive_fallback poniżej.
 # ------------------------------------------------------------------
 poll:
   enabled: true
   lookback_days: 14
   max_new_per_run: 400
-  token: ""            # albo zmienna środowiskowa ORZECZNIK_POLL_TOKEN
+  token: ""                    # albo zmienna środowiskowa ORZECZNIK_POLL_TOKEN
+  archive_fallback: true
+  archive_fallback_limit: 150  # ile pozycji archiwum najwyżej za jeden przebieg
 
-# Baza NOWYCH orzeczeń zebranych przez obserwatora.
-# To nie jest kopia archiwum - wyszukiwanie nadal idzie na żywo do portali.
+# Własna baza orzeczeń - pierwsze i jedyne źródło, z którego czyta aplikacja
+# webowa (patrz orzeczenia/web/app.py); zapełnia ją wyłącznie obserwator.
 store:
   enabled: true
   url: "sqlite:///dane/orzecznik.sqlite3"   # w chmurze: zmienna DATABASE_URL

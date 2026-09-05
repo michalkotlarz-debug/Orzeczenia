@@ -427,6 +427,20 @@ def run_once(cfg: Config, registry: Registry | None = None,
             log.info("żaden serwis nie ma włączonego obserwatora")
             return []
         results = [run_source(registry, store, cfg, key) for key in targets]
+
+        ms_result = next((r for r in results if r.source == "ms"), None)
+        if (ms_result and ms_result.status == "ok" and ms_result.added == 0
+                and "ms" in targets and cfg.poll.archive_fallback):
+            # Portal nie opublikowal nic nowszego niz to, co juz mamy - zamiast
+            # bezczynnie czekac do nastepnego przebiegu, dociagamy kolejna
+            # porcje starszego archiwum (najnowsze z jeszcze niezaimportowanych,
+            # patrz `import_ms_batch` - to samo zadanie co dawniej robil osobny
+            # workflow GitHub Actions, teraz wbudowane w zwykly przebieg
+            # obserwatora, zeby baza rosla nawet gdy nie ma prawdziwych nowosci).
+            results.append(import_ms_batch(
+                cfg, registry=registry, store=store,
+                limit=cfg.poll.archive_fallback_limit, full=True))
+
         removed = store.prune()
         if removed:
             log.info("usunięto %s przeterminowanych wpisów", removed)

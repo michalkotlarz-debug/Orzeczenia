@@ -10,9 +10,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import orzeczenia.obserwator as obserwator                            # noqa: E402
+from orzeczenia.config import Config, SourceConfig                    # noqa: E402
 from orzeczenia.obserwator import (                                   # noqa: E402
     _fetch_and_store_each, _is_uzasadnienie_pair, _merge_wyrok_uzasadnienie,
-    merge_existing_duplicates, merge_specific_pair)
+    merge_existing_duplicates, merge_specific_pair, run_once)
 from orzeczenia.store import RunResult, Store                         # noqa: E402
 
 failures: list[str] = []
@@ -321,6 +323,55 @@ with tempfile.TemporaryDirectory() as tmp:
     check("podpowiedzi podstawy prawnej", store.suggest("legal_basis", "991"), ["art. 991 k.c."])
     check("za krótki fragment nie zwraca nic", store.suggest("judge", "k"), [])
     check("nieznane pole zwraca pustą listę", store.suggest("court", "sąd"), [])
+    store.close()
+
+# ----------------------------------------------------------------------
+print("\n== run_once: dociąganie starszego archiwum, gdy portal nic nowego nie ma ==")
+with tempfile.TemporaryDirectory() as tmp:
+    store = Store(f"sqlite:///{tmp}/test.sqlite3", keep_days=400)
+    cfg = Config(ms=SourceConfig(enabled=True, poll=True),
+                nsa=SourceConfig(enabled=False, poll=False),
+                kio=SourceConfig(enabled=False, poll=False))
+
+    class FakeRegistry:
+        sources = {"ms": object()}
+        def close(self):
+            pass
+
+    calls = []
+
+    def fake_batch(cfg, registry=None, store=None, limit=1000, since=None, full=False):
+        calls.append((limit, full))
+        return RunResult(source="ms", seen=5, added=5, status="ok")
+
+    orig_run_source, orig_batch = obserwator.run_source, obserwator.import_ms_batch
+    obserwator.import_ms_batch = fake_batch
+    try:
+        obserwator.run_source = lambda registry, store, cfg, key: RunResult(
+            source=key, seen=10, added=0, status="ok")
+        results = run_once(cfg, registry=FakeRegistry(), store=store)
+        check("brak nowosci -> wlacza sie fallback archiwum (limit z configu, full=True)",
+             calls, [(cfg.poll.archive_fallback_limit, True)])
+        check("wynik fallbacku dolaczony do listy przebiegow", len(results), 2)
+
+        calls.clear()
+        obserwator.run_source = lambda registry, store, cfg, key: RunResult(
+            source=key, seen=10, added=3, status="ok")
+        results2 = run_once(cfg, registry=FakeRegistry(), store=store)
+        check("sa prawdziwe nowosci -> fallback sie NIE wlacza", calls, [])
+        check("tylko jeden wpis w wynikach", len(results2), 1)
+
+        calls.clear()
+        cfg.poll.archive_fallback = False
+        obserwator.run_source = lambda registry, store, cfg, key: RunResult(
+            source=key, seen=10, added=0, status="ok")
+        results3 = run_once(cfg, registry=FakeRegistry(), store=store)
+        check("archive_fallback=False -> fallback sie nie wlacza mimo braku nowosci",
+             calls, [])
+        check("tylko jeden wpis w wynikach", len(results3), 1)
+    finally:
+        obserwator.run_source = orig_run_source
+        obserwator.import_ms_batch = orig_batch
     store.close()
 
 # ----------------------------------------------------------------------
