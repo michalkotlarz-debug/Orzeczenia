@@ -332,6 +332,22 @@ with tempfile.TemporaryDirectory() as tmp:
     store.close()
 
 # ----------------------------------------------------------------------
+print("\n== existing_akty: ktore odeslania juz mamy w bazie (do klikalnych linkow) ==")
+with tempfile.TemporaryDirectory() as tmp:
+    store = Store(f"sqlite:///{tmp}/test.sqlite3", keep_days=400)
+    store.upsert_akty([{
+        "publisher": "DU", "year": 2019, "pos": 53, "title": "Ustawa testowa",
+        "act_type": "Ustawa", "source_url": "http://x",
+    }])
+    check("znaleziony akt, ktory juz mamy", store.existing_akty(["DU/2019/53"]), {"DU/2019/53"})
+    check("nieznany akt pominiety, znany zostaje",
+         store.existing_akty(["DU/2019/53", "MP/2026/1"]), {"DU/2019/53"})
+    check("pusta lista nic nie crashuje", store.existing_akty([]), set())
+    check("zle sformatowany identyfikator pomijany bez bledu",
+         store.existing_akty(["cos-nie-tak"]), set())
+    store.close()
+
+# ----------------------------------------------------------------------
 print("\n== run_once: dociąganie starszego archiwum, gdy portal nic nowego nie ma ==")
 with tempfile.TemporaryDirectory() as tmp:
     store = Store(f"sqlite:///{tmp}/test.sqlite3", keep_days=400)

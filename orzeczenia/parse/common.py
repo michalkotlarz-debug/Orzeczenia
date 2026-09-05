@@ -379,6 +379,22 @@ _PDF_HEADER_WORDS = {
     "OŚWIADCZENIERZĄDOWE", "UMOWAMIĘDZYNARODOWA", "DZIENNIKUSTAW",
     "RZECZYPOSPOLITEJPOLSKIEJ", "MONITORPOLSKI",
 }
+# Nagłówek/stopka powtarzana u góry KAŻDEJ strony PDF-a (nazwa dziennika,
+# numer strony, numer pozycji) - zbędna, bo te same informacje (data, numer
+# pozycji) i tak są już pokazane w metryce aktu wyżej na stronie. Sprawdzone
+# na żywo: "Dziennik Ustaw" / "– 2 –" / "Poz. 1881" jako osobne "akapity"
+# porozrzucane w środku treści.
+_PDF_NOISE_RES = [
+    re.compile(r"^(dziennik ustaw|monitor polski)(\s+rzeczypospolitej polskiej)?$", re.IGNORECASE),
+    re.compile(r"^dziennik urzędowy rzeczypospolitej polskiej$", re.IGNORECASE),
+    re.compile(r"^[–—-]\s*\d+\s*[–—-]$"),
+    re.compile(r"^poz\.\s*\d+\.?$", re.IGNORECASE),
+    re.compile(r"^warszawa,\s*dnia\s+.+\d{4}\s*r\.?$", re.IGNORECASE),
+]
+# Numer/litera punktu, który w PDF-ie wypadł na końcu strony osobno od
+# właściwej treści punktu (np. "2)" jako cały "akapit", dalszy ciąg dopiero
+# w następnym) - sklejamy z tym, co następuje, zamiast zostawiać samotne "2)".
+_PDF_LONE_MARKER_RE = re.compile(r"^„?(?:\d+[a-ząćęłńóśźż]?|[a-ząćęłńóśźż])\)”?$")
 
 
 def clean_pdf_text(text: str | None, act_type: str | None = None) -> str | None:
@@ -402,9 +418,24 @@ def clean_pdf_text(text: str | None, act_type: str | None = None) -> str | None:
         block = re.sub(r" {2,}", " ", block)
         if not block:
             continue
+        if any(rx.match(block) for rx in _PDF_NOISE_RES):
+            continue
         squashed = block.replace(" ", "")
         if squashed.isupper() and (squashed in _PDF_HEADER_WORDS or
                                    (act_type_squashed and squashed == act_type_squashed)):
             block = squashed
         blocks.append(block)
-    return "\n".join(blocks)
+    # Samotny numer/litera punktu bez treści (np. "2)" jako cały "akapit",
+    # bo w PDF-ie wypadł na końcu strony) - sklej z następnym, zamiast
+    # zostawiać jako osobny, bezsensowny wiersz.
+    merged: list[str] = []
+    i = 0
+    while i < len(blocks):
+        b = blocks[i]
+        if _PDF_LONE_MARKER_RE.match(b) and i + 1 < len(blocks):
+            merged.append(f"{b} {blocks[i + 1]}")
+            i += 2
+        else:
+            merged.append(b)
+            i += 1
+    return "\n".join(merged)

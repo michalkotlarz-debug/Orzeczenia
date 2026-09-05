@@ -284,6 +284,15 @@ check("pojedyncze złamanie wiersza w akapicie -> spacja, nie nowy akapit",
 check("podwójne spacje z justowania -> pojedyncza",
      clean_pdf_text("dotyczących  opłat,  do  których"),
      "dotyczących opłat, do których")
+check("nagłówek/stopka strony (dziennik, numer strony, pozycja) -> usunięte",
+     clean_pdf_text("Dziennik Ustaw\n\n– 2 –\n\nPoz. 1881\n\nArt. 5. Coś tam."),
+     "Art. 5. Coś tam.")
+check("data ogłoszenia na stronie tytułowej -> usunięta (jest już w metryce)",
+     clean_pdf_text("Warszawa, dnia 30 grudnia 2025 r.\n\nArt. 1. Treść."),
+     "Art. 1. Treść.")
+check("samotny numer punktu bez treści -> sklejony z następnym akapitem",
+     clean_pdf_text("2)\n\npodmiotów, o których mowa w art. 18."),
+     "2) podmiotów, o których mowa w art. 18.")
 check("puste wejście nie crashuje", clean_pdf_text(None), None)
 check("idempotentne - drugie przejście nic już nie zmienia",
      clean_pdf_text(clean_pdf_text("nastę-\n\npujące  słowo", act_type="Ustawa")),

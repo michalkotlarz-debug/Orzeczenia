@@ -252,6 +252,8 @@ main h2{font-size:17px;font-weight:650;letter-spacing:-.01em}
 .metryka .role{color:var(--muted);font-size:12px;margin-left:4px}
 .chip{display:inline-block;padding:3px 10px;margin:2px 5px 2px 0;border:1px solid var(--line);
   border-radius:999px;font-size:12.5px;color:var(--ink-soft)}
+.reflink{color:var(--navy);font-weight:600}
+.reflink:hover{text-decoration:underline}
 
 .block{margin-top:34px}
 .block h2{font-family:var(--serif);font-weight:400;font-size:22px;letter-spacing:-.01em;

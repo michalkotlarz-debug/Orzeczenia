@@ -33,7 +33,7 @@
       <h2>Odesłania</h2>
       {% for grupa, lista in a.act_references.items() %}
       <p><b>{{ grupa }}:</b>
-        {% for r in lista %}{{ r.id }}{% if not loop.last %}, {% endif %}{% endfor %}
+        {% for r in lista %}{% if r.id in (existing_refs|default([])) %}<a class="reflink" href="/akt/{{ r.id }}">{{ r.id }}</a>{% else %}{{ r.id }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
       </p>
       {% endfor %}
     </section>

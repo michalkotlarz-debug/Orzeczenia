@@ -842,6 +842,30 @@ class Store:
             f"AND pos IN ({holes})", [publisher, year, *pos])
         return {r["pos"] for r in rows}
 
+    def existing_akty(self, ids: Iterable[str]) -> set[str]:
+        """Które z podanych identyfikatorów ELI-referencji ("PUBLISHER/ROK/POZ",
+        np. "DU/2019/53") już mamy zaimportowane - do zamiany "Odesłań" w
+        klikalne linki tylko tam, gdzie faktycznie jest dokąd kliknąć. Liczone
+        na bieżąco przy każdym wyświetleniu strony, więc nowo zaimportowany akt
+        automatycznie zaczyna być linkowany z każdej strony, która się do niego
+        odwołuje - bez żadnego osobnego kroku przy imporcie."""
+        triples: list[tuple[str, int, int]] = []
+        for i in dict.fromkeys(ids):
+            parts = (i or "").split("/")
+            if len(parts) != 3:
+                continue
+            try:
+                triples.append((parts[0], int(parts[1]), int(parts[2])))
+            except ValueError:
+                continue
+        if not triples:
+            return set()
+        where = " OR ".join(["(publisher = ? AND year = ? AND pos = ?)"] * len(triples))
+        params = [v for t in triples for v in t]
+        rows = self._rows(
+            f"SELECT publisher, year, pos FROM akty_prawne WHERE {where}", params)
+        return {f"{r['publisher']}/{r['year']}/{r['pos']}" for r in rows}
+
     def upsert_akty(self, items: list[dict[str, Any]]) -> int:
         """Jak `upsert_documents` dla orzeczeń - nadpisuje już znane pozycje
         (re-import poprawia dane, np. gdy HTML dochodzi po PDF), zwraca liczbę

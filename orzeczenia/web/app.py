@@ -307,7 +307,10 @@ def akt_page(request: Request, publisher: str, year: int, pos: int):
         return templates.TemplateResponse(request, "blad.html", {
             "tytul": "Nie znaleziono aktu",
             "opis": "Tego aktu prawnego nie ma (jeszcze) w naszej bazie."}, status_code=404)
-    return templates.TemplateResponse(request, "akt.html", {"a": akt})
+    ref_ids = [r.get("id") for lista in (akt.get("act_references") or {}).values() for r in lista]
+    existing_refs = store.existing_akty(ref_ids) if ref_ids else set()
+    return templates.TemplateResponse(request, "akt.html",
+                                      {"a": akt, "existing_refs": existing_refs})
 
 
 @app.get("/api/akty")
