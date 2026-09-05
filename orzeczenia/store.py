@@ -604,7 +604,7 @@ class Store:
         return {r["source"]: r["n"] for r in rows}
 
     def _advanced_where(self, *, phrase: str, source: str, signature: str, judge: str,
-                        legal_basis: str, thematic: str, date_field: str,
+                        legal_basis: str, thematic: str, court: str, date_field: str,
                         date_from: str, date_to: str) -> tuple[list[str], list[Any], str]:
         """Buduje WHERE dla `search_advanced`/`count_advanced_by_source` - te same
         filtry, których dziś nie umie `search_fulltext` (sygnatura, sędzia,
@@ -631,6 +631,12 @@ class Store:
         if thematic := squash(thematic):
             where.append(f"thematic {like} ?")
             params.append(f"%{thematic}%")
+        if court := squash(court):
+            # Prefiks, nie substring w dowolnym miejscu - "Sąd Rejonowy" ma
+            # pasować do "Sąd Rejonowy w X", nie łapać przypadkiem czegoś,
+            # gdzie ten szczebel jest wspomniany gdzie indziej w nazwie.
+            where.append(f"court {like} ?")
+            params.append(f"{court}%")
         date_col = "publication_date" if date_field == "publication" else "judgment_date"
         if d := _as_iso_date(date_from):
             where.append(f"{date_col} >= ?")
@@ -651,17 +657,17 @@ class Store:
 
     def search_advanced(self, *, phrase: str = "", source: str = "", signature: str = "",
                         judge: str = "", legal_basis: str = "", thematic: str = "",
-                        date_field: str = "judgment", date_from: str = "", date_to: str = "",
-                        sort: str = "relevance", limit: int = 20,
+                        court: str = "", date_field: str = "judgment", date_from: str = "",
+                        date_to: str = "", sort: str = "relevance", limit: int = 20,
                         offset: int = 0) -> tuple[list[dict[str, Any]], int]:
         """Jak `search_fulltext`, ale obsługuje też pozostałe filtry z formularza
-        (sygnatura, sędzia, podstawa prawna, hasło, zakres dat) - dzięki temu
-        wyszukiwanie z filtrami też czyta najpierw z własnej bazy zamiast zawsze
-        pytać portal na żywo. Bez ŻADNEGO kryterium nie zwraca nic (tak samo jak
-        portal źródłowy przy pustym zapytaniu)."""
+        (sygnatura, sędzia, podstawa prawna, hasło, szczebel sądu, zakres dat) -
+        dzięki temu wyszukiwanie z filtrami też czyta najpierw z własnej bazy
+        zamiast zawsze pytać portal na żywo. Bez ŻADNEGO kryterium nie zwraca nic
+        (tak samo jak portal źródłowy przy pustym zapytaniu)."""
         where, params, phrase = self._advanced_where(
             phrase=phrase, source=source, signature=signature, judge=judge,
-            legal_basis=legal_basis, thematic=thematic, date_field=date_field,
+            legal_basis=legal_basis, thematic=thematic, court=court, date_field=date_field,
             date_from=date_from, date_to=date_to)
         if not where:
             return [], 0
@@ -693,7 +699,7 @@ class Store:
         kwargs.pop("source", None)
         where, params, _ = self._advanced_where(source="", **{
             k: kwargs.get(k, "") for k in
-            ("phrase", "signature", "judge", "legal_basis", "thematic",
+            ("phrase", "signature", "judge", "legal_basis", "thematic", "court",
              "date_field", "date_from", "date_to")})
         if not where:
             return {}

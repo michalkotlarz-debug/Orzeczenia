@@ -87,7 +87,7 @@ with tempfile.TemporaryDirectory() as tmp:
     d2 = doc("D2", "wyrok", signature="III K 5/26", full_text="treść 2",
              judges=[{"name": "Anna Nowak", "role": "przewodniczący"}],
              legal_basis="art. 172 k.c.", judgment_date="2026-01-15",
-             publication_date="2026-01-20")
+             publication_date="2026-01-20", court="Sąd Okręgowy w Y")
     store.upsert_documents([d1, d2])
 
     check("bez żadnego kryterium nic nie zwraca (jak portal przy pustym)",
@@ -102,6 +102,12 @@ with tempfile.TemporaryDirectory() as tmp:
 
     rows, _ = store.search_advanced(legal_basis="172")
     check("filtr po podstawie prawnej", [r["doc_id"] for r in rows], ["D2"])
+
+    rows, _ = store.search_advanced(court="Sąd Okręgowy")
+    check("filtr po szczeblu sądu (prefiks)", [r["doc_id"] for r in rows], ["D2"])
+
+    rows, _ = store.search_advanced(court="Sąd Rejonowy")
+    check("filtr po innym szczeblu sądu zwraca inny dokument", [r["doc_id"] for r in rows], ["D1"])
 
     rows, _ = store.search_advanced(date_field="judgment", date_from="2026-01-01")
     check("filtr po dacie orzeczenia od", [r["doc_id"] for r in rows], ["D2"])

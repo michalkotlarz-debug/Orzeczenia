@@ -130,7 +130,7 @@ def _is_simple_phrase(q: Query) -> bool:
     sygnatura/sędzia/podstawa prawna/zakres dat nadal wymagają pytania portalu
     na żywo (patrz Registry.search)."""
     return bool(q.phrase) and not any(
-        (q.signature, q.judge, q.legal_basis, q.thematic, q.date_from, q.date_to))
+        (q.signature, q.judge, q.legal_basis, q.thematic, q.court, q.date_from, q.date_to))
 
 
 PAGE_SIZES = (20, 50, 100)
@@ -162,13 +162,13 @@ def _search(query: Query, page: int, source: str,
     rows, total = store.search_advanced(
         phrase=query.phrase, source=source, signature=query.signature,
         judge=query.judge, legal_basis=query.legal_basis, thematic=query.thematic,
-        date_field=query.date_field, date_from=query.date_from, date_to=query.date_to,
-        sort=query.sort, limit=per_page, offset=(page - 1) * per_page)
+        court=query.court, date_field=query.date_field, date_from=query.date_from,
+        date_to=query.date_to, sort=query.sort, limit=per_page, offset=(page - 1) * per_page)
     res = SearchPage(hits=[Store.to_hit(r) for r in rows], page=page, per_page=per_page)
     res.totals = ({source: total} if source else
                   store.count_advanced_by_source(
                       phrase=query.phrase, signature=query.signature, judge=query.judge,
-                      legal_basis=query.legal_basis, thematic=query.thematic,
+                      legal_basis=query.legal_basis, thematic=query.thematic, court=query.court,
                       date_field=query.date_field, date_from=query.date_from,
                       date_to=query.date_to))
     return res
@@ -192,13 +192,13 @@ def home(request: Request, date_field: str = "publication"):
 def search_page(
     request: Request,
     q: str = "", signature: str = "", judge: str = "", thematic: str = "",
-    legal_basis: str = "", date_field: str = "judgment",
+    legal_basis: str = "", court: str = "", date_field: str = "judgment",
     date_from: str = "", date_to: str = "",
     sort: str = "relevance", source: str = "", page: int = Q(1, ge=1),
     per_page: int = Q(DEFAULT_PAGE_SIZE),
 ):
     query = _query(phrase=q, signature=signature, judge=judge, thematic=thematic,
-                   legal_basis=legal_basis, date_field=date_field,
+                   legal_basis=legal_basis, court=court, date_field=date_field,
                    date_from=date_from, date_to=date_to, sort=sort)
     per_page = _clean_per_page(per_page)
     res = _search(query, page=page, source=source, per_page=per_page)
@@ -342,11 +342,11 @@ def favourites_page(request: Request):
 
 @app.get("/eksport.csv")
 def export_csv(q: str = "", signature: str = "", judge: str = "", thematic: str = "",
-               legal_basis: str = "", date_field: str = "judgment",
+               legal_basis: str = "", court: str = "", date_field: str = "judgment",
                date_from: str = "", date_to: str = "", sort: str = "relevance",
                source: str = "", page: int = Q(1, ge=1)):
     query = _query(phrase=q, signature=signature, judge=judge, thematic=thematic,
-                   legal_basis=legal_basis, date_field=date_field,
+                   legal_basis=legal_basis, court=court, date_field=date_field,
                    date_from=date_from, date_to=date_to, sort=sort)
     res = _search(query, page=page, source=source, per_page=DEFAULT_PAGE_SIZE)
 
@@ -364,12 +364,12 @@ def export_csv(q: str = "", signature: str = "", judge: str = "", thematic: str 
 # ----------------------------------------------------------------------
 @app.get("/api/szukaj")
 def api_search(q: str = "", signature: str = "", judge: str = "", thematic: str = "",
-               legal_basis: str = "", date_field: str = "judgment",
+               legal_basis: str = "", court: str = "", date_field: str = "judgment",
                date_from: str = "", date_to: str = "", sort: str = "relevance",
                source: str = "", page: int = Q(1, ge=1),
                per_page: int = Q(DEFAULT_PAGE_SIZE)):
     query = _query(phrase=q, signature=signature, judge=judge, thematic=thematic,
-                   legal_basis=legal_basis, date_field=date_field,
+                   legal_basis=legal_basis, court=court, date_field=date_field,
                    date_from=date_from, date_to=date_to, sort=sort)
     per_page = _clean_per_page(per_page)
     res = _search(query, page=page, source=source, per_page=per_page)

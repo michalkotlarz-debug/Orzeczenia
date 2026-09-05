@@ -13,6 +13,7 @@ class Query:
     judge: str = ""
     thematic: str = ""
     legal_basis: str = ""
+    court: str = ""                       # szczebel sądu, np. "Sąd Rejonowy"
     date_from: str = ""
     date_to: str = ""
     date_field: str = "judgment"          # judgment | publication
@@ -20,7 +21,7 @@ class Query:
 
     def is_empty(self) -> bool:
         return not any((self.phrase, self.signature, self.judge, self.thematic,
-                        self.legal_basis, self.date_from, self.date_to))
+                        self.legal_basis, self.court, self.date_from, self.date_to))
 
 
 @dataclass

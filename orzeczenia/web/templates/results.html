@@ -18,7 +18,8 @@
   </nav>
 
   {{ filter_chips(params, [('Sygnatura', 'signature'), ('Sędzia', 'judge'),
-                          ('Hasło', 'thematic'), ('Podstawa prawna', 'legal_basis')]) }}
+                          ('Hasło', 'thematic'), ('Podstawa prawna', 'legal_basis'),
+                          ('Sąd', 'court')]) }}
 
   <div class="resultsbar">
     <p>Znaleziono <b>{{ "{:,}".format(res.total).replace(",", " ") }}</b>
@@ -38,7 +39,7 @@
     {% for h in res.hits %}{{ result_card(h, query, q) }}{% else %}
     <div class="empty">
       <p><b>Brak wyników</b></p>
-      {% if query.signature or query.judge or query.thematic or query.legal_basis or query.date_from or query.date_to %}
+      {% if query.signature or query.judge or query.thematic or query.legal_basis or query.court or query.date_from or query.date_to %}
       <p>Żaden zaimportowany dokument nie pasuje do wszystkich wybranych filtrów naraz —
          usuń jeden z nich powyżej (przy zakładkach) albo
          <a href="/szukaj{% if q %}?q={{ q|urlencode }}{% endif %}">wyczyść wszystkie filtry</a>.</p>

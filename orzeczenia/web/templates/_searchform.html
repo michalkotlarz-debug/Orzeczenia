@@ -1,6 +1,6 @@
 {% from "_icons.html" import icon %}
 {% set Q = query|default(none) %}
-{% set has_adv = Q and (Q.signature or Q.judge or Q.thematic or Q.legal_basis or Q.date_from or Q.date_to) %}
+{% set has_adv = Q and (Q.signature or Q.judge or Q.thematic or Q.legal_basis or Q.court or Q.date_from or Q.date_to) %}
 <form class="searchform" action="/szukaj" method="get" autocomplete="off">
   <div class="searchbar">
     {{ icon('search', 'ic lead') }}
@@ -36,6 +36,14 @@
                data-suggest="legal_basis" list="dl-legal_basis" autocomplete="off">
         <datalist id="dl-legal_basis"></datalist>
       </label>
+      <label>Sąd
+        <select name="court">
+          <option value="">Wszystkie</option>
+          {% for c in ('Sąd Najwyższy', 'Sąd Apelacyjny', 'Sąd Okręgowy', 'Sąd Rejonowy') %}
+          <option value="{{ c }}" {% if (Q.court if Q else '')==c %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </label>
       <label>Sortowanie
         <select name="sort">
           {% for k, v in sort_labels.items() %}
@@ -60,8 +68,9 @@
     </div>
     <p class="fhint">{{ icon('info', 'ic') }}
       Wyszukiwanie przeszukuje wyłącznie już zaimportowane orzeczenia. Sędziego,
-      hasła tematycznego i podstawy prawnej szuka tylko wśród sądów powszechnych —
-      użycie ich pomija KIO. Data publikacji jest dostępna wyłącznie dla sądów powszechnych.</p>
+      hasła tematycznego, podstawy prawnej i sądu szuka tylko wśród sądów
+      powszechnych — użycie ich pomija KIO. Data publikacji jest dostępna
+      wyłącznie dla sądów powszechnych.</p>
 
     <div class="factions">
       <button type="submit">Zastosuj filtry</button>
