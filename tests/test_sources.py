@@ -301,6 +301,13 @@ check("nagłówki sklejone jednym złamaniem wiersza z tytułem aktu -> też usu
                     "Poz. 1881\nUSTAWA\nz dnia 4 grudnia 2025 r.\n\no zmianie ustawy.",
                     act_type="Ustawa"),
      "USTAWA z dnia 4 grudnia 2025 r.\no zmianie ustawy.")
+check("przypis o zmianach tekstu jednolitego -> usunięty",
+     clean_pdf_text("Art. 1. Coś tam.\n\n1)  Zmiany tekstu jednolitego wymienionej ustawy "
+                    "zostały ogłoszone w Dz. U. z 2025 r. poz. 497.\n\nArt. 2. Dalej."),
+     "Art. 1. Coś tam.\nArt. 2. Dalej.")
+check("dwa samotne markery pod rząd + dwie treści pod rząd -> sparowane po kolei",
+     clean_pdf_text("1)\n\n2)\n\nsą członkami Komisji lub\n\nposiadają stopień naukowy."),
+     "1) są członkami Komisji lub\n2) posiadają stopień naukowy.")
 check("puste wejście nie crashuje", clean_pdf_text(None), None)
 check("idempotentne - drugie przejście nic już nie zmienia",
      clean_pdf_text(clean_pdf_text("nastę-\n\npujące  słowo", act_type="Ustawa")),

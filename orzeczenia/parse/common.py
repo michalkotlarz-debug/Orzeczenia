@@ -407,7 +407,18 @@ _PDF_NOISE_RES = [
 # Numer/litera punktu, który w PDF-ie wypadł na końcu strony osobno od
 # właściwej treści punktu (np. "2)" jako cały "akapit", dalszy ciąg dopiero
 # w następnym) - sklejamy z tym, co następuje, zamiast zostawiać samotne "2)".
+# Zdarza się też PO KILKA takich samotnych markerów pod rząd (np. "1)", "2)"
+# jako dwa osobne "akapity", dopiero potem treść obu punktów jako kolejne
+# dwa akapity) - sprawdzone na żywo, patrz pętla parująca niżej.
 _PDF_LONE_MARKER_RE = re.compile(r"^„?(?:\d+[a-ząćęłńóśźż]?|[a-ząćęłńóśźż])\)”?$")
+# Przypis o zmianach tekstu jednolitego (np. "1)  Zmiany tekstu jednolitego
+# wymienionej ustawy zostały ogłoszone w Dz. U. z 2025 r. poz. 497, ...") -
+# stała, rozpoznawalna formułka drukowana u dołu strony PDF-a, bez wartości
+# dla czytelnika strony (numery pozycji nowelizujących nie są tu nigdzie
+# wykorzystywane) - sprawdzone na żywo na przykładzie wysłanym przez
+# użytkownika (DU 2025 poz. 1882).
+_PDF_FOOTNOTE_RE = re.compile(
+    r"^\d+\)\s*zmian[ya]\s+tekstu\s+jednolitego\b.*\bogłoszon", re.IGNORECASE | re.DOTALL)
 
 
 def clean_pdf_text(text: str | None, act_type: str | None = None) -> str | None:
@@ -439,22 +450,34 @@ def clean_pdf_text(text: str | None, act_type: str | None = None) -> str | None:
         block = re.sub(r" {2,}", " ", block).strip()
         if not block:
             continue
+        if _PDF_FOOTNOTE_RE.match(block):
+            continue
         squashed = block.replace(" ", "")
         if squashed.isupper() and (squashed in _PDF_HEADER_WORDS or
                                    (act_type_squashed and squashed == act_type_squashed)):
             block = squashed
         blocks.append(block)
     # Samotny numer/litera punktu bez treści (np. "2)" jako cały "akapit",
-    # bo w PDF-ie wypadł na końcu strony) - sklej z następnym, zamiast
-    # zostawiać jako osobny, bezsensowny wiersz.
+    # bo w PDF-ie wypadł na końcu strony) - sklej z następnym akapitem.
+    # Zdarza się też PO KILKA takich markerów pod rząd (np. "1)", "2)" jako
+    # dwa osobne akapity, dopiero potem treść OBU punktów jako kolejne dwa
+    # akapity) - parujemy je WTEDY po kolei (marker 1. z treścią 1., marker
+    # 2. z treścią 2.), a nie marker z markerem, jak przy naiwnym parowaniu
+    # sąsiadów (sprawdzone na żywo - dawało bezsensowne "1) 2)").
     merged: list[str] = []
-    i = 0
-    while i < len(blocks):
-        b = blocks[i]
-        if _PDF_LONE_MARKER_RE.match(b) and i + 1 < len(blocks):
-            merged.append(f"{b} {blocks[i + 1]}")
-            i += 2
+    i, n = 0, len(blocks)
+    while i < n:
+        j = i
+        while j < n and _PDF_LONE_MARKER_RE.match(blocks[j]):
+            j += 1
+        marker_count = j - i
+        if marker_count:
+            pair_count = min(marker_count, n - j)
+            for k in range(pair_count):
+                merged.append(f"{blocks[i + k]} {blocks[j + k]}")
+            merged.extend(blocks[i + pair_count:j])   # markery bez pary (bezpiecznik)
+            i = j + pair_count
         else:
-            merged.append(b)
+            merged.append(blocks[i])
             i += 1
     return "\n".join(merged)
