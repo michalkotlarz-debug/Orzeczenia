@@ -11,6 +11,7 @@ import csv
 import io
 import logging
 import secrets
+import threading
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from pathlib import Path
@@ -36,6 +37,12 @@ registry = Registry(cfg)
 
 _store: Any = None
 _store_error: str = ""
+# Chroni przed nakladajacymi sie przebiegami obserwatora - jeden przebieg
+# (zwlaszcza z dogrywaniem archiwum, patrz obserwator.py:run_once) potrafi
+# trwac dluzej niz odstep crona (co 30 min). Bez tego kolejne wywolania
+# `/api/obserwator/uruchom` kolejkuja sie w watkach FastAPI i mnoza
+# rownolegle zapytania do tego samego portalu zamiast czekac na swoja kolej.
+_poll_lock = threading.Lock()
 
 
 def get_store():
@@ -358,11 +365,18 @@ def api_poll(x_poll_token: str = Header("", alias="X-Poll-Token"),
     if store is None:
         return JSONResponse({"error": _store_error}, status_code=503)
 
-    from ..obserwator import run_once
-    results = run_once(cfg, registry=registry, store=store)
-    return {"ok": all(r.status == "ok" for r in results),
-            "przebiegi": [r.as_dict() for r in results],
-            "nowych": sum(r.added for r in results)}
+    if not _poll_lock.acquire(blocking=False):
+        return JSONResponse(
+            {"error": "poprzedni przebieg obserwatora wciąż trwa - pomijam ten"},
+            status_code=409)
+    try:
+        from ..obserwator import run_once
+        results = run_once(cfg, registry=registry, store=store)
+        return {"ok": all(r.status == "ok" for r in results),
+                "przebiegi": [r.as_dict() for r in results],
+                "nowych": sum(r.added for r in results)}
+    finally:
+        _poll_lock.release()
 
 
 @app.get("/api/health")
