@@ -24,7 +24,7 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
-from ..parse.common import html_text
+from ..parse.common import clean_pdf_text, html_text
 
 log = logging.getLogger("orzecznik.eli")
 
@@ -84,6 +84,7 @@ class EliClient:
                 pdf_bytes = self.http.get_bytes(
                     self._url(f"/acts/{publisher}/{year}/{pos}/text.pdf"))
                 text = pdf_to_text(pdf_bytes).strip()
+                text = clean_pdf_text(text, act_type=meta.get("type"))
                 if text:
                     return text, "pdf"
             except Exception as exc:

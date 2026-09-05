@@ -360,3 +360,51 @@ def court_level(court: str | None) -> str | None:
     if "najwyzszy" in c:
         return "SN"
     return None
+
+
+# ----------------------------------------------------------------------
+# Dzienniki urzędowe (Dziennik Ustaw / Monitor Polski) publikują teksty
+# aktów jako justowany, ręcznie łamany PDF - `pdfminer` wyciąga z niego samą
+# geometrię linii, nie strukturę logiczną. Efekt bez oczyszczenia: każde
+# złamanie wiersza w PDF-ie (nawet w środku zdania) staje się osobnym
+# akapitem na stronie, a słowa przecięte na końcu wiersza zostają rozbite
+# na dwie części. Sprawdzone na żywo (DU 2025 poz. 1882, "USTAWA" wyciągana
+# jako rozstrzelone "US T AW A" - typografia strony tytułowej używa
+# liternictwa z dodatkowym rozstawem, którego pdfminer nie odróżnia od
+# spacji między słowami).
+_PDF_DEHYPHEN_RE = re.compile(r"(\w)-\s*\n+\s*([a-ząćęłńóśźż])")
+_PDF_HEADER_WORDS = {
+    "USTAWA", "ROZPORZĄDZENIE", "OBWIESZCZENIE", "UCHWAŁA", "POSTANOWIENIE",
+    "ZARZĄDZENIE", "KOMUNIKAT", "DECYZJA", "PROTOKÓŁ", "OGŁOSZENIE",
+    "OŚWIADCZENIERZĄDOWE", "UMOWAMIĘDZYNARODOWA", "DZIENNIKUSTAW",
+    "RZECZYPOSPOLITEJPOLSKIEJ", "MONITORPOLSKI",
+}
+
+
+def clean_pdf_text(text: str | None, act_type: str | None = None) -> str | None:
+    """Składa tekst wyciągnięty z PDF-a dziennika urzędowego z powrotem w
+    czytelne akapity - patrz uzasadnienie wyżej. Akapity łączy pojedynczym
+    `\\n`, tak samo jak `html_text()` niżej - dzięki temu `akt.html`
+    (`full_text.split("\\n")`) renderuje jednym i tym samym kodem teksty
+    z obu źródeł, bez specjalnego przypadku dla PDF-a. Bezpieczne do
+    uruchomienia wielokrotnie (idempotentne) i do zastosowania wstecz na już
+    zapisanym tekście, nie tylko przy świeżym imporcie."""
+    if not text:
+        return text
+    text = _PDF_DEHYPHEN_RE.sub(r"\1\2", text)
+    act_type_squashed = (act_type or "").replace(" ", "").upper()
+    blocks: list[str] = []
+    for block in re.split(r"\n{2,}", text):
+        # Pojedyncze złamanie wiersza w obrębie jednego akapitu (wykrytego
+        # przez pdfminer jako jeden blok) to zawijanie linii w PDF-ie, nie
+        # nowy akapit - zamieniamy na spację, nie na koniec akapitu.
+        block = re.sub(r"\s*\n\s*", " ", block).strip()
+        block = re.sub(r" {2,}", " ", block)
+        if not block:
+            continue
+        squashed = block.replace(" ", "")
+        if squashed.isupper() and (squashed in _PDF_HEADER_WORDS or
+                                   (act_type_squashed and squashed == act_type_squashed)):
+            block = squashed
+        blocks.append(block)
+    return "\n".join(blocks)

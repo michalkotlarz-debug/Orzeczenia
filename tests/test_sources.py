@@ -13,9 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from orzeczenia.config import CacheConfig, Config, SourceConfig      # noqa: E402
 from orzeczenia.format import date_pl, plural_pl                     # noqa: E402
 from orzeczenia.http import SourceUnavailable, TTLCache, looks_blocked  # noqa: E402
-from orzeczenia.parse.common import (detect_doc_type, detect_doc_types,  # noqa: E402
-                                     extract_panel, normalize_signature, parse_date,
-                                     split_sentencja_uzasadnienie)
+from orzeczenia.parse.common import (clean_pdf_text, detect_doc_type,  # noqa: E402
+                                     detect_doc_types, extract_panel, normalize_signature,
+                                     parse_date, split_sentencja_uzasadnienie)
 from orzeczenia.sources.base import Query                            # noqa: E402
 from orzeczenia.sources.kio_uzp import KioSource                     # noqa: E402
 from orzeczenia.sources.ms_gov import MsSource                       # noqa: E402
@@ -270,6 +270,24 @@ p1 = extract_panel("Sąd w składzie:\nPrzewodniczący: SSO Jan Kowalski\n"
                    "Protokolant: Maria Wójcik\npo rozpoznaniu")
 check("skład z treści", [x["name"] for x in p1],
       ["Jan Kowalski", "Maria Wójcik", "Anna Nowak", "Piotr Zieliński"])
+
+print("\n== clean_pdf_text: skladanie tekstu wyciagnietego z PDF dziennika urzedowego ==")
+check("nagłówek rozstrzelony liternictwem -> jedno słowo",
+     clean_pdf_text("US T AW A  \n\nz dnia 4 grudnia 2025 r.", act_type="Ustawa"),
+     "USTAWA\nz dnia 4 grudnia 2025 r.")
+check("słowo przecięte na końcu wiersza -> sklejone",
+     clean_pdf_text("wprowadza się nastę-\n\npujące zmiany:"),
+     "wprowadza się następujące zmiany:")
+check("pojedyncze złamanie wiersza w akapicie -> spacja, nie nowy akapit",
+     clean_pdf_text("o zmianie ustawy \nprzed sądami"),
+     "o zmianie ustawy przed sądami")
+check("podwójne spacje z justowania -> pojedyncza",
+     clean_pdf_text("dotyczących  opłat,  do  których"),
+     "dotyczących opłat, do których")
+check("puste wejście nie crashuje", clean_pdf_text(None), None)
+check("idempotentne - drugie przejście nic już nie zmienia",
+     clean_pdf_text(clean_pdf_text("nastę-\n\npujące  słowo", act_type="Ustawa")),
+     clean_pdf_text("nastę-\n\npujące  słowo", act_type="Ustawa"))
 
 reg.close()
 print("\n" + "=" * 62)
