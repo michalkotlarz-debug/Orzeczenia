@@ -64,7 +64,13 @@
     {% for a in rows %}{{ akt_card(a) }}{% else %}
     <div class="empty">
       <p><b>Nic tu jeszcze nie ma</b></p>
-      <p>Import aktów prawnych dopiero trwa albo żaden akt nie pasuje do filtrów.</p>
+      {% if act_type or date_from or date_to %}
+      <p>Żaden zaimportowany akt nie pasuje do wszystkich wybranych filtrów naraz —
+         usuń jeden z nich powyżej albo
+         <a href="/akty{% if q %}?q={{ q|urlencode }}{% endif %}">wyczyść wszystkie filtry</a>.</p>
+      {% else %}
+      <p>Import aktów prawnych dopiero trwa albo żadna pozycja nie pasuje do frazy.</p>
+      {% endif %}
     </div>
     {% endfor %}
   </div>

@@ -38,7 +38,13 @@
     {% for h in res.hits %}{{ result_card(h, query, q) }}{% else %}
     <div class="empty">
       <p><b>Brak wyników</b></p>
-      <p>Spróbuj innych słów, krótszego rdzenia wyrazu albo usuń część filtrów.</p>
+      {% if query.signature or query.judge or query.thematic or query.legal_basis or query.date_from or query.date_to %}
+      <p>Żaden zaimportowany dokument nie pasuje do wszystkich wybranych filtrów naraz —
+         usuń jeden z nich powyżej (przy zakładkach) albo
+         <a href="/szukaj{% if q %}?q={{ q|urlencode }}{% endif %}">wyczyść wszystkie filtry</a>.</p>
+      {% else %}
+      <p>Spróbuj innych słów albo krótszego rdzenia wyrazu.</p>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
