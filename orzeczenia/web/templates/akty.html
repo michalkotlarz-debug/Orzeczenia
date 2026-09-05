@@ -23,7 +23,14 @@
 
       <div class="filters" data-filters {% if not has_adv %}hidden{% endif %}>
         <div class="fgrid">
-          <label>Typ <input type="text" name="act_type" value="{{ act_type }}" placeholder="np. Ustawa, Rozporządzenie"></label>
+          <label>Typ
+            <select name="act_type">
+              <option value="">Wszystkie</option>
+              {% for t in ('Ustawa', 'Rozporządzenie', 'Obwieszczenie', 'Postanowienie', 'Uchwała') %}
+              <option value="{{ t }}" {% if act_type==t %}selected{% endif %}>{{ t }}</option>
+              {% endfor %}
+            </select>
+          </label>
           <label>Od <input type="date" name="date_from" value="{{ date_from }}"></label>
           <label>Do <input type="date" name="date_to" value="{{ date_to }}"></label>
         </div>
