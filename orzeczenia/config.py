@@ -45,6 +45,15 @@ class SourceConfig:
 
 
 @dataclass
+class EliConfig:
+    """Akty prawne (Dziennik Ustaw / Monitor Polski) z ELI API Sejmu -
+    https://api.sejm.gov.pl/eli. Publiczne, bez autoryzacji."""
+    enabled: bool = True
+    base_url: str = "https://api.sejm.gov.pl/eli"
+    publishers: list[str] = field(default_factory=lambda: ["DU", "MP"])
+
+
+@dataclass
 class StoreConfig:
     """Baza nowych orzeczeń zebranych przez obserwatora.
 
@@ -86,6 +95,7 @@ class Config:
         label="KIO", base_url="https://orzeczenia.uzp.gov.pl"))
     nsa: SourceConfig = field(default_factory=lambda: SourceConfig(
         label="Sądy administracyjne", base_url="https://orzeczenia.nsa.gov.pl"))
+    eli: EliConfig = field(default_factory=EliConfig)
     store: StoreConfig = field(default_factory=StoreConfig)
     poll: PollConfig = field(default_factory=PollConfig)
     web: WebConfig = field(default_factory=WebConfig)
@@ -115,6 +125,7 @@ def load_config(path: str | Path | None = None) -> Config:
                  label="KIO", base_url="https://orzeczenia.uzp.gov.pl"),
         nsa=_sub(SourceConfig, sources.get("nsa"),
                  label="Sądy administracyjne", base_url="https://orzeczenia.nsa.gov.pl"),
+        eli=_sub(EliConfig, raw.get("eli")),
         store=_sub(StoreConfig, raw.get("store")),
         poll=_sub(PollConfig, raw.get("poll")),
         web=_sub(WebConfig, raw.get("web")),

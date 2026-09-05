@@ -126,6 +126,144 @@ def archiwizuj_ms(
     raise typer.Exit(0 if r.status in ("ok", "przerwano") else 1)
 
 
+@app.command("akty-importuj")
+def akty_importuj(
+    year: int = typer.Option(..., "--year", help="Rocznik do pobrania, np. 2026"),
+    publisher: str = typer.Option("DU,MP", "--publisher",
+                                  help="DU, MP, albo oba oddzielone przecinkiem (domyślnie oba)"),
+    limit: int = typer.Option(None, "--limit",
+                              help="Ile NOWYCH pozycji maksymalnie pobrać w tym przebiegu "
+                                   "(domyślnie bez limitu - cały brakujący rocznik)"),
+    pos: str = typer.Option(None, "--pos",
+                            help="Tylko wskazane pozycje rocznika, oddzielone przecinkami "
+                                 "(np. --pos 2366,2362,2359) - zamiast całego rocznika. "
+                                 "Przy kilku dziennikach naraz (--publisher DU,MP) te same "
+                                 "pozycje są stosowane do każdego z nich."),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+    config: Path = typer.Option("config.yaml", "--config", "-c"),
+):
+    """Import aktów prawnych (Dziennik Ustaw / Monitor Polski) z ELI API Sejmu
+    dla jednego rocznika. Bezpiecznie przerwać (Ctrl+C) i uruchomić ponownie -
+    już zaimportowane pozycje są pomijane. Żeby zejść w głąb archiwum, wywołuj
+    to samo polecenie z kolejnymi, coraz starszymi rocznikami:
+
+        python -m orzeczenia akty-importuj --year 2026
+        python -m orzeczenia akty-importuj --year 2025
+        ...
+
+    Albo dociągnij tylko wybrane pozycje (np. do ręcznego sprawdzenia czegoś
+    konkretnego) przez --pos, bez importowania całego rocznika.
+    """
+    logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO,
+                        format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
+                        stream=sys.stdout)
+    from .akty_import import import_positions, import_year
+    from .http import PoliteClient
+    from .store import Store
+    cfg = load_config(config)
+    store = Store(cfg.store.url, cfg.store.keep_days)
+    http = PoliteClient(cfg.http, cfg.cache)
+    publishers = [p.strip().upper() for p in publisher.split(",") if p.strip()]
+    positions = [int(p.strip()) for p in pos.split(",") if p.strip()] if pos else None
+    ok = True
+    try:
+        for pub in publishers:
+            if positions:
+                r = import_positions(cfg, store, pub, year, positions, http=http)
+            else:
+                r = import_year(cfg, store, pub, year, http=http, limit=limit)
+            mark = "ok " if r.status == "ok" else ("BŁĄD" if r.status == "blad" else "STOP")
+            typer.echo(f"[{mark}] {pub} {year}: w źródle {r.total_in_source}  "
+                      f"już w bazie {r.already_had}  pobrano {r.downloaded}  "
+                      f"błędów {r.failed}  bez tekstu {r.without_text}  {r.detail}")
+            ok = ok and r.status != "blad"
+    finally:
+        http.close()
+        store.close()
+    raise typer.Exit(0 if ok else 1)
+
+
+@app.command("akty-obserwuj")
+def akty_obserwuj(
+    since: str = typer.Option(None, "--since",
+                              help="ISO 8601, np. 2026-09-01T00:00:00 - domyślnie od "
+                                   "najświeższego 'changeDate' już w bazie. Przy PUSTEJ "
+                                   "bazie aktów podaj to jawnie (pierwsze uruchomienie)."),
+    limit: int = typer.Option(500, "--limit", help="Bezpiecznik - maks. pozycji w tym przebiegu"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+    config: Path = typer.Option("config.yaml", "--config", "-c"),
+):
+    """Przyrostowy import aktów prawnych - tylko to, co nowe/zmienione od
+    ostatniego przebiegu (jedno zapytanie o listę zmian zamiast całych
+    roczników). Do wpisania w crona / Harmonogram zadań, np. raz dziennie:
+
+        0 6 * * *  cd /app && python -m orzeczenia akty-obserwuj
+    """
+    logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO,
+                        format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
+                        stream=sys.stdout)
+    from .akty_import import import_changes
+    from .store import Store
+    cfg = load_config(config)
+    store = Store(cfg.store.url, cfg.store.keep_days)
+    try:
+        try:
+            r = import_changes(cfg, store, since=since, max_items=limit)
+        except ValueError as exc:
+            typer.echo(f"BŁĄD: {exc}")
+            raise typer.Exit(1)
+        mark = "ok " if r.status == "ok" else "STOP"
+        typer.echo(f"[{mark}] zmian w źródle: {r.total_in_source}  przetworzono: "
+                  f"{r.downloaded}  bez tekstu: {r.without_text}")
+    finally:
+        store.close()
+
+
+@app.command("akty-wstecz")
+def akty_wstecz(
+    batch: int = typer.Option(300, "--batch",
+                              help="Ile NOWYCH pozycji na dziennik pobrać w tym wywołaniu"),
+    start_year: int = typer.Option(2025, "--start-year",
+                                   help="Od którego rocznika zacząć, jeśli nie ma jeszcze "
+                                        "zapisanego postępu (plik stanu)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+    config: Path = typer.Option("config.yaml", "--config", "-c"),
+):
+    """Jedna PACZKA cofania się w głąb archiwum aktów prawnych - pamięta sama,
+    na którym roczniku stanęła (plik `dane/akty_wstecz_state.json`), i gdy
+    rocznik jest już kompletny w obu dziennikach, następnym razem schodzi rok
+    niżej. Do wpisania w crona / Harmonogram zadań co np. 30 minut:
+
+        */30 * * * *  cd /app && python -m orzeczenia akty-wstecz
+    """
+    logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO,
+                        format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
+                        stream=sys.stdout)
+    from .akty_import import import_backfill_batch
+    from .store import Store
+    cfg = load_config(config)
+    store = Store(cfg.store.url, cfg.store.keep_days)
+    try:
+        info = import_backfill_batch(cfg, store, batch_per_publisher=batch,
+                                     start_year=start_year)
+        if info.get("done"):
+            typer.echo(f"Gotowe - rocznik {info['year']} jest poniżej najstarszego "
+                      f"dostępnego w API, cofanie się zakończone.")
+            return
+        for r in info["results"]:
+            mark = "ok " if r["status"] == "ok" else "BŁĄD"
+            typer.echo(f"[{mark}] {r['publisher']} {r['year']}: w źródle {r['total_in_source']}  "
+                      f"już w bazie {r['already_had']}  pobrano {r['downloaded']}  "
+                      f"błędów {r['failed']}")
+        if info["complete_this_year"]:
+            typer.echo(f"Rocznik {info['year']} kompletny - następnym razem: {info['next_year']}.")
+        else:
+            typer.echo(f"Rocznik {info['year']} jeszcze niekompletny - kolejne wywołanie "
+                      f"kontynuuje ten sam rok.")
+    finally:
+        store.close()
+
+
 @app.command("scal-duplikaty")
 def scal_duplikaty(
     source: str = typer.Option("ms", "--source", help="Które źródło porządkować"),

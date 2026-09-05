@@ -43,6 +43,9 @@ _store_error: str = ""
 # `/api/obserwator/uruchom` kolejkuja sie w watkach FastAPI i mnoza
 # rownolegle zapytania do tego samego portalu zamiast czekac na swoja kolej.
 _poll_lock = threading.Lock()
+# Osobna kłódka dla akty prawne - niezależna od obserwatora orzeczeń, żeby
+# jeden z tych przebiegów nie blokował drugiego bez potrzeby.
+_akty_lock = threading.Lock()
 
 
 def get_store():
@@ -270,6 +273,66 @@ def new_page(request: Request, source: str = "", date_field: str = "publication"
         "blad": _store_error if store is None else ""})
 
 
+@app.get("/akty", response_class=HTMLResponse)
+def akty_page(
+    request: Request, q: str = "", publisher: str = "", act_type: str = "",
+    in_force: str = "", date_from: str = "", date_to: str = "",
+    page: int = Q(1, ge=1), per_page: int = Q(DEFAULT_PAGE_SIZE),
+):
+    store = get_store()
+    per_page = _clean_per_page(per_page)
+    if store is None:
+        rows, total, counts = [], 0, {}
+    else:
+        rows, total = store.search_akty(
+            phrase=q, publisher=publisher, act_type=act_type, in_force=in_force,
+            date_from=date_from, date_to=date_to,
+            limit=per_page, offset=(page - 1) * per_page)
+        counts = store.count_akty()
+    params = {k: v for k, v in request.query_params.items() if k != "page" and v}
+    return templates.TemplateResponse(request, "akty.html", {
+        "q": q, "rows": rows, "total": total, "counts": counts,
+        "publisher": publisher, "act_type": act_type, "in_force": in_force,
+        "date_from": date_from, "date_to": date_to, "page": page, "params": params,
+        "per_page": per_page, "page_sizes": PAGE_SIZES,
+        "blad": _store_error if store is None else ""})
+
+
+@app.get("/akt/{publisher}/{year}/{pos}", response_class=HTMLResponse)
+def akt_page(request: Request, publisher: str, year: int, pos: int):
+    store = get_store()
+    akt = store.get_akt(publisher.upper(), year, pos) if store else None
+    if akt is None:
+        return templates.TemplateResponse(request, "blad.html", {
+            "tytul": "Nie znaleziono aktu",
+            "opis": "Tego aktu prawnego nie ma (jeszcze) w naszej bazie."}, status_code=404)
+    return templates.TemplateResponse(request, "akt.html", {"a": akt})
+
+
+@app.get("/api/akty")
+def api_akty(q: str = "", publisher: str = "", act_type: str = "", in_force: str = "",
+            date_from: str = "", date_to: str = "", page: int = Q(1, ge=1),
+            per_page: int = Q(DEFAULT_PAGE_SIZE)):
+    store = get_store()
+    per_page = _clean_per_page(per_page)
+    if store is None:
+        return JSONResponse({"error": _store_error}, status_code=503)
+    rows, total = store.search_akty(
+        phrase=q, publisher=publisher, act_type=act_type, in_force=in_force,
+        date_from=date_from, date_to=date_to,
+        limit=per_page, offset=(page - 1) * per_page)
+    return {"page": page, "per_page": per_page, "total": total, "results": rows}
+
+
+@app.get("/api/akt/{publisher}/{year}/{pos}")
+def api_akt(publisher: str, year: int, pos: int):
+    store = get_store()
+    akt = store.get_akt(publisher.upper(), year, pos) if store else None
+    if akt is None:
+        return JSONResponse({"error": "akt nie został jeszcze zaimportowany"}, status_code=404)
+    return akt
+
+
 @app.get("/ulubione", response_class=HTMLResponse)
 def favourites_page(request: Request):
     """Lista jest budowana w przeglądarce z localStorage - serwer nic o niej nie wie."""
@@ -377,6 +440,72 @@ def api_poll(x_poll_token: str = Header("", alias="X-Poll-Token"),
                 "nowych": sum(r.added for r in results)}
     finally:
         _poll_lock.release()
+
+
+def _check_poll_token(x_poll_token: str, authorization: str) -> JSONResponse | None:
+    token = cfg.poll.token
+    if not token:
+        return JSONResponse(
+            {"error": "ustaw ORZECZNIK_POLL_TOKEN (albo poll.token), zanim włączysz cron"},
+            status_code=503)
+    given = x_poll_token or authorization.removeprefix("Bearer ").strip()
+    if not secrets.compare_digest(given, token):
+        return JSONResponse({"error": "zły token"}, status_code=401)
+    return None
+
+
+@app.get("/api/akty/wstecz")
+def api_akty_wstecz(batch: int = Q(300, ge=1, le=2000),
+                    x_poll_token: str = Header("", alias="X-Poll-Token"),
+                    authorization: str = Header("", alias="Authorization")):
+    """Jedna paczka cofania się w głąb archiwum aktów prawnych - wołane z
+    zewnątrz (cron), tokenem zabezpieczone tak samo jak /api/obserwator/uruchom.
+    Patrz akty_import.import_backfill_batch - sama pamięta, na którym roczniku
+    stanęła."""
+    if (err := _check_poll_token(x_poll_token, authorization)) is not None:
+        return err
+    if not cfg.eli.enabled:
+        return JSONResponse({"error": "akty prawne wyłączone (eli.enabled)"}, status_code=503)
+    store = get_store()
+    if store is None:
+        return JSONResponse({"error": _store_error}, status_code=503)
+    if not _akty_lock.acquire(blocking=False):
+        return JSONResponse(
+            {"error": "poprzedni przebieg (akty) wciąż trwa - pomijam ten"}, status_code=409)
+    try:
+        from ..akty_import import import_backfill_batch
+        info = import_backfill_batch(cfg, store, batch_per_publisher=batch)
+        return info
+    finally:
+        _akty_lock.release()
+
+
+@app.get("/api/akty/obserwuj")
+def api_akty_obserwuj(limit: int = Q(500, ge=1, le=5000),
+                      x_poll_token: str = Header("", alias="X-Poll-Token"),
+                      authorization: str = Header("", alias="Authorization")):
+    """Przyrostowy import aktów prawnych (tylko nowe/zmienione od ostatniego
+    przebiegu) - wołane z zewnątrz (cron), patrz akty_import.import_changes."""
+    if (err := _check_poll_token(x_poll_token, authorization)) is not None:
+        return err
+    if not cfg.eli.enabled:
+        return JSONResponse({"error": "akty prawne wyłączone (eli.enabled)"}, status_code=503)
+    store = get_store()
+    if store is None:
+        return JSONResponse({"error": _store_error}, status_code=503)
+    if not _akty_lock.acquire(blocking=False):
+        return JSONResponse(
+            {"error": "poprzedni przebieg (akty) wciąż trwa - pomijam ten"}, status_code=409)
+    try:
+        from ..akty_import import import_changes
+        try:
+            r = import_changes(cfg, store, max_items=limit)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        return {"ok": r.status == "ok", "w_zrodle": r.total_in_source,
+                "przetworzono": r.downloaded, "bez_tekstu": r.without_text}
+    finally:
+        _akty_lock.release()
 
 
 @app.get("/api/health")

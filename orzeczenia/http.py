@@ -176,6 +176,34 @@ class PoliteClient:
             cache_key: str | None = None, cookies=None) -> str:
         return self._cached("GET", url, None, ttl, ignore_robots, cache_key, cookies)
 
+    def get_bytes(self, url: str, *, ignore_robots: bool = False) -> bytes:
+        """Jak `get`, ale surowe bajty bez cache'u (np. PDF do wyciągnięcia
+        tekstu na bieżąco - sam plik nigdzie nie jest zapisywany)."""
+        if not ignore_robots and not self._robots_ok(url):
+            raise SourceUnavailable(f"robots.txt tego serwisu zabrania pobierania: {url}")
+        host = urlparse(url).netloc
+        last: Exception | None = None
+        for attempt in range(1, self.cfg.max_retries + 1):
+            self.limiter.wait(host)
+            try:
+                r = self.client.get(url)
+            except Exception as exc:
+                last = exc
+                time.sleep(self.cfg.backoff_base_seconds * attempt)
+                continue
+            if r.status_code == 200:
+                return r.content
+            if r.status_code in (404, 410):
+                raise SourceUnavailable(f"nie znaleziono dokumentu ({r.status_code})")
+            if r.status_code in (403, 429, 500, 502, 503, 504):
+                wait = self.cfg.backoff_base_seconds * attempt
+                self.limiter.penalise(host, wait)
+                last = SourceUnavailable(f"HTTP {r.status_code}")
+                time.sleep(wait)
+                continue
+            raise SourceUnavailable(f"HTTP {r.status_code}")
+        raise SourceUnavailable(f"serwis nie odpowiedział: {last}")
+
     def post(self, url: str, data: dict[str, str], *, ttl: int | None = None,
              ignore_robots: bool = False, cache_key: str | None = None, cookies=None) -> str:
         return self._cached("POST", url, data, ttl, ignore_robots, cache_key, cookies)

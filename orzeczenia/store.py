@@ -94,6 +94,38 @@ CREATE TABLE IF NOT EXISTS pominiete (
     skipped_at   TEXT NOT NULL,
     UNIQUE (source, doc_id)
 );
+
+-- Akty prawne (Dziennik Ustaw / Monitor Polski) z ELI API Sejmu. Osobna
+-- tabela od `orzeczenia` - inny kształt danych (obowiązywanie, wejście w
+-- życie, brak sędziego/składu). Celowo bez oryginalnych PDF-ów, patrz
+-- sources/sejm_eli.py - trzymamy tylko już wyciągnięty tekst.
+CREATE TABLE IF NOT EXISTS akty_prawne (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    publisher         TEXT NOT NULL,          -- DU | MP
+    year              INTEGER NOT NULL,
+    pos               INTEGER NOT NULL,
+    eli               TEXT,
+    address           TEXT,
+    title             TEXT,
+    act_type          TEXT,
+    status            TEXT,
+    in_force          TEXT,                   -- pole 'inForce' z API, np. IN_FORCE
+    promulgation_date TEXT,
+    announcement_date TEXT,
+    entry_into_force_date TEXT,
+    released_by       TEXT NOT NULL DEFAULT '[]',   -- JSON, lista organów
+    keywords          TEXT NOT NULL DEFAULT '[]',   -- JSON
+    act_references    TEXT NOT NULL DEFAULT '{}',   -- JSON, jak pole 'references' w API
+    full_text         TEXT,
+    text_source       TEXT,                   -- html | pdf | NULL (jeszcze niedostępny)
+    source_url        TEXT NOT NULL,
+    changed_at         TEXT,                  -- 'changeDate' z API - do wykrywania zmian
+    first_seen_at     TEXT NOT NULL,
+    last_seen_at      TEXT NOT NULL,
+    UNIQUE (publisher, year, pos)
+);
+CREATE INDEX IF NOT EXISTS ix_akty_promulgation ON akty_prawne (promulgation_date DESC);
+CREATE INDEX IF NOT EXISTS ix_akty_publisher    ON akty_prawne (publisher, year);
 """
 
 SCHEMA_PG = SCHEMA_SQLITE.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
@@ -233,6 +265,10 @@ class Store:
                                 "search_vector tsvector")
                     cur.execute("CREATE INDEX IF NOT EXISTS ix_orz_search "
                                 "ON orzeczenia USING GIN (search_vector)")
+                    cur.execute("ALTER TABLE akty_prawne ADD COLUMN IF NOT EXISTS "
+                                "search_vector tsvector")
+                    cur.execute("CREATE INDEX IF NOT EXISTS ix_akty_search "
+                                "ON akty_prawne USING GIN (search_vector)")
             else:
                 existing = {row[1] for row in
                             self._conn.execute("PRAGMA table_info(orzeczenia)").fetchall()}
@@ -757,6 +793,198 @@ class Store:
         removed = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
         self._run("DELETE FROM przebiegi WHERE started_at < ?", [cutoff])
         return removed
+
+    # ------------------------------------------------------------------
+    # Akty prawne (Dziennik Ustaw / Monitor Polski) - patrz sources/sejm_eli.py
+    # i akty_import.py. Osobny zestaw metod, bo kształt danych nie pasuje do
+    # `Hit`/`upsert_documents` (obowiązywanie zamiast sędziego/składu).
+    # ------------------------------------------------------------------
+    AKT_COLUMNS = (
+        "publisher", "year", "pos", "eli", "address", "title", "act_type", "status",
+        "in_force", "promulgation_date", "announcement_date", "entry_into_force_date",
+        "released_by", "keywords", "act_references", "full_text", "text_source",
+        "source_url", "changed_at",
+    )
+
+    @staticmethod
+    def _akt_row(d: dict[str, Any]) -> tuple:
+        return (
+            d["publisher"], int(d["year"]), int(d["pos"]), d.get("eli"), d.get("address"),
+            d.get("title"), d.get("act_type"), d.get("status"), d.get("in_force"),
+            _as_iso_date(d.get("promulgation_date")), _as_iso_date(d.get("announcement_date")),
+            _as_iso_date(d.get("entry_into_force_date")),
+            json.dumps(d.get("released_by") or [], ensure_ascii=False),
+            json.dumps(d.get("keywords") or [], ensure_ascii=False),
+            json.dumps(d.get("act_references") or {}, ensure_ascii=False),
+            d.get("full_text"), d.get("text_source"), d.get("source_url") or "",
+            d.get("changed_at"),
+        )
+
+    @staticmethod
+    def _akt_search_text(d: dict[str, Any]) -> str:
+        parts = [d.get("title"), d.get("act_type"), d.get("status"),
+                 " ".join(d.get("keywords") or []), d.get("full_text")]
+        return " ".join(p for p in parts if p)
+
+    def known_akty(self, publisher: str, year: int, positions: Iterable[int]) -> set[int]:
+        pos = list(dict.fromkeys(int(p) for p in positions))
+        if not pos:
+            return set()
+        holes = ",".join("?" for _ in pos)
+        rows = self._rows(
+            f"SELECT pos FROM akty_prawne WHERE publisher = ? AND year = ? "
+            f"AND pos IN ({holes})", [publisher, year, *pos])
+        return {r["pos"] for r in rows}
+
+    def upsert_akty(self, items: list[dict[str, Any]]) -> int:
+        """Jak `upsert_documents` dla orzeczeń - nadpisuje już znane pozycje
+        (re-import poprawia dane, np. gdy HTML dochodzi po PDF), zwraca liczbę
+        NOWYCH."""
+        if not items:
+            return 0
+        now = _now()
+        added = 0
+        by_year: dict[tuple[str, int], list[dict[str, Any]]] = {}
+        for d in items:
+            by_year.setdefault((d["publisher"], int(d["year"])), []).append(d)
+
+        for (publisher, year), group in by_year.items():
+            known = self.known_akty(publisher, year, (d["pos"] for d in group))
+            fresh: list[tuple] = []
+            updates: list[tuple] = []
+            seen_now: set[int] = set()
+            for d in group:
+                pos = int(d["pos"])
+                if pos in seen_now:
+                    continue
+                seen_now.add(pos)
+                row = self._akt_row(d)
+                text = self._akt_search_text(d)
+                if pos in known:
+                    tail = (text, now, publisher, year, pos) if self.is_pg \
+                        else (now, publisher, year, pos)
+                    updates.append((*row[3:], *tail))
+                else:
+                    tail = (text, now, now) if self.is_pg else (now, now)
+                    fresh.append((*row, *tail))
+
+            if fresh:
+                cols = ", ".join(self.AKT_COLUMNS)
+                holes = ", ".join("?" for _ in self.AKT_COLUMNS)
+                if self.is_pg:
+                    sql = (f"INSERT INTO akty_prawne ({cols}, search_vector, "
+                           f"first_seen_at, last_seen_at) "
+                           f"VALUES ({holes}, to_tsvector('simple', unaccent(?)), ?, ?)")
+                else:
+                    sql = (f"INSERT INTO akty_prawne ({cols}, first_seen_at, last_seen_at) "
+                           f"VALUES ({holes}, ?, ?)")
+                self._run(sql, fresh, many=True)
+                added += len(fresh)
+
+            if updates:
+                set_cols = self.AKT_COLUMNS[3:]
+                assign = ", ".join(f"{c} = ?" for c in set_cols)
+                if self.is_pg:
+                    sql = (f"UPDATE akty_prawne SET {assign}, "
+                           f"search_vector = to_tsvector('simple', unaccent(?)), "
+                           f"last_seen_at = ? WHERE publisher = ? AND year = ? AND pos = ?")
+                else:
+                    sql = (f"UPDATE akty_prawne SET {assign}, last_seen_at = ? "
+                           f"WHERE publisher = ? AND year = ? AND pos = ?")
+                self._run(sql, updates, many=True)
+        return added
+
+    def get_akt(self, publisher: str, year: int, pos: int) -> dict[str, Any] | None:
+        rows = self._rows(
+            "SELECT * FROM akty_prawne WHERE publisher = ? AND year = ? AND pos = ?",
+            [publisher, int(year), int(pos)])
+        return self._decode_akt(rows[0]) if rows else None
+
+    def count_akty(self) -> dict[str, int]:
+        rows = self._rows("SELECT publisher, COUNT(*) AS n FROM akty_prawne GROUP BY publisher")
+        return {r["publisher"]: r["n"] for r in rows}
+
+    def max_akty_changed(self) -> str | None:
+        """Najświeższe 'changeDate' (z API), jakie już mamy - kursor do
+        przyrostowego importu przez /eli/changes/acts (patrz akty_import.import_changes)."""
+        rows = self._rows("SELECT MAX(changed_at) AS m FROM akty_prawne")
+        return rows[0]["m"] if rows else None
+
+    def latest_akty(self, limit: int = 20, publisher: str = "") -> list[dict[str, Any]]:
+        sql = "SELECT * FROM akty_prawne WHERE 1=1"
+        params: list[Any] = []
+        if publisher:
+            sql += " AND publisher = ?"
+            params.append(publisher)
+        sql += " ORDER BY promulgation_date DESC, year DESC, pos DESC LIMIT ?"
+        params.append(int(limit))
+        return [self._decode_akt(r) for r in self._rows(sql, params)]
+
+    def search_akty(self, *, phrase: str = "", publisher: str = "", act_type: str = "",
+                    in_force: str = "", date_from: str = "", date_to: str = "",
+                    limit: int = 20, offset: int = 0) -> tuple[list[dict[str, Any]], int]:
+        where: list[str] = []
+        params: list[Any] = []
+        if publisher:
+            where.append("publisher = ?")
+            params.append(publisher)
+        if act_type := squash(act_type):
+            where.append(f"act_type {self._like()} ?")
+            params.append(f"%{act_type}%")
+        if in_force == "1":
+            where.append("in_force = ?")
+            params.append("IN_FORCE")
+        elif in_force == "0":
+            where.append("in_force != ?")
+            params.append("IN_FORCE")
+        if d := _as_iso_date(date_from):
+            where.append("promulgation_date >= ?")
+            params.append(d)
+        if d := _as_iso_date(date_to):
+            where.append("promulgation_date <= ?")
+            params.append(d)
+        phrase = squash(phrase)
+        order = "promulgation_date DESC, year DESC, pos DESC"
+        if phrase:
+            if self.is_pg:
+                where.append("search_vector @@ plainto_tsquery('simple', unaccent(?))")
+                params.append(phrase)
+                order = "rank DESC, " + order
+            else:
+                like = f"%{phrase}%"
+                where.append("(title LIKE ? OR full_text LIKE ?)")
+                params.extend([like, like])
+        where_sql = " AND ".join(where) if where else "1=1"
+
+        total = self._rows(
+            f"SELECT COUNT(*) AS n FROM akty_prawne WHERE {where_sql}", params)[0]["n"]
+        if phrase and self.is_pg:
+            rows = self._rows(
+                f"SELECT *, ts_rank(search_vector, "
+                f"plainto_tsquery('simple', unaccent(?))) AS rank "
+                f"FROM akty_prawne WHERE {where_sql} ORDER BY {order} LIMIT ? OFFSET ?",
+                [phrase, *params, int(limit), int(offset)])
+        else:
+            rows = self._rows(
+                f"SELECT * FROM akty_prawne WHERE {where_sql} "
+                f"ORDER BY {order} LIMIT ? OFFSET ?",
+                [*params, int(limit), int(offset)])
+        return [self._decode_akt(r) for r in rows], int(total)
+
+    @staticmethod
+    def _decode_akt(row: dict[str, Any]) -> dict[str, Any]:
+        d = dict(row)
+        for key in ("released_by", "keywords"):
+            try:
+                d[key] = json.loads(d.get(key) or "[]")
+            except (TypeError, ValueError):
+                d[key] = []
+        try:
+            d["act_references"] = json.loads(d.get("act_references") or "{}")
+        except (TypeError, ValueError):
+            d["act_references"] = {}
+        d["url"] = f"/akt/{d['publisher']}/{d['year']}/{d['pos']}"
+        return d
 
     # ------------------------------------------------------------------
     @staticmethod

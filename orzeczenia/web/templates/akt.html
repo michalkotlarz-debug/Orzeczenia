@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ a.publisher }} {{ a.year }} poz. {{ a.pos }} — {{ site_name }}{% endblock %}
+{% block content %}
+<div class="wrap reading">
+  <a class="back" href="javascript:history.back()">{{ icon('arrow-left','ic') }} Wróć do listy</a>
+
+  <article class="doc">
+    <header class="doc-head">
+      <div class="ident">
+        <span class="badge">{{ icon('scales','ic') }} {{ (a.act_type or 'akt prawny')|upper }}</span>
+        {% if a.in_force == 'IN_FORCE' %}<span class="badge on">{{ icon('check','ic') }} Obowiązuje</span>{% endif %}
+      </div>
+      <h1>{{ a.title or '(bez tytułu)' }}</h1>
+      <p class="doc-sub">{{ a.publisher }} {{ a.year }} poz. {{ a.pos }}{% if a.eli %} · ELI {{ a.eli }}{% endif %}</p>
+      <div class="doc-tools">
+        {% if a.source_url %}<a class="ghost" href="{{ a.source_url }}" target="_blank" rel="noopener">{{ icon('external','ic') }} Źródło (ELI API)</a>{% endif %}
+      </div>
+    </header>
+
+    <dl class="metryka">
+      {% if a.promulgation_date %}<div><dt>{{ icon('calendar','ic') }} Data ogłoszenia</dt><dd>{{ a.promulgation_date|datepl }}</dd></div>{% endif %}
+      {% if a.announcement_date %}<div><dt>{{ icon('calendar','ic') }} Data podpisania</dt><dd>{{ a.announcement_date|datepl }}</dd></div>{% endif %}
+      {% if a.entry_into_force_date %}<div><dt>{{ icon('calendar','ic') }} Wejście w życie</dt><dd>{{ a.entry_into_force_date|datepl }}</dd></div>{% endif %}
+      {% if a.status %}<div><dt>{{ icon('info','ic') }} Status</dt><dd>{{ a.status }}</dd></div>{% endif %}
+      {% if a.released_by %}<div class="wide"><dt>{{ icon('court','ic') }} Organ wydający</dt><dd>{{ a.released_by|join(', ') }}</dd></div>{% endif %}
+      {% if a.keywords %}<div class="wide"><dt>{{ icon('tag','ic') }} Słowa kluczowe</dt><dd>
+        {% for k in a.keywords %}<span class="chip">{{ k }}</span>{% endfor %}</dd></div>{% endif %}
+    </dl>
+
+    {% if a.act_references %}
+    <section class="block">
+      <h2>Odesłania</h2>
+      {% for grupa, lista in a.act_references.items() %}
+      <p><b>{{ grupa }}:</b>
+        {% for r in lista %}{{ r.id }}{% if not loop.last %}, {% endif %}{% endfor %}
+      </p>
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    <section class="block">
+      <h2>Treść</h2>
+      {% if a.full_text %}
+      <div class="text">{% for para in a.full_text.split("\n") %}<p>{{ para }}</p>{% endfor %}</div>
+      {% if a.text_source == 'pdf' %}<p class="fhint">{{ icon('info','ic') }} Tekst wyciągnięty automatycznie z oryginału PDF - może zawierać drobne błędy formatowania.</p>{% endif %}
+      {% else %}
+      <p class="fhint">{{ icon('info','ic') }} Rządowe centrum legislacji nie opublikowało jeszcze treści tego aktu (ani HTML, ani PDF) - spróbuj ponownie później.</p>
+      {% endif %}
+    </section>
+  </article>
+</div>
+{% endblock %}

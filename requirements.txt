@@ -9,3 +9,6 @@ typer>=0.12
 # Sterownik PostgreSQL - potrzebny TYLKO wtedy, gdy DATABASE_URL wskazuje
 # Postgresa (Neon / Supabase / Railway). Przy SQLite nie jest w ogóle importowany.
 psycopg[binary]>=3.1
+# Wyciąganie tekstu z PDF-ów aktów prawnych, które nie mają jeszcze HTML-a
+# (sources/sejm_eli.py) - sam PDF nigdy nie trafia na dysk.
+pdfminer.six>=20231228

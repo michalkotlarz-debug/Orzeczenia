@@ -1,0 +1,27 @@
+{% from "_icons.html" import icon %}
+{# Karta aktu prawnego. `a` to zdekodowany wiersz z tabeli `akty_prawne`. #}
+{% macro akt_card(a) %}
+<article class="card" data-akt="{{ a.publisher }}/{{ a.year }}/{{ a.pos }}">
+  <div class="card-top">
+    <div class="ident">
+      <span class="badge">{{ icon('scales', 'ic') }} {{ (a.act_type or 'akt prawny')|upper }}</span>
+      <a class="sig" href="{{ a.url }}">{{ a.publisher }} {{ a.year }} poz. {{ a.pos }}</a>
+    </div>
+    <div class="tools">
+      {% if a.in_force == 'IN_FORCE' %}<span class="badge on" title="Obowiązuje">{{ icon('check', 'ic') }}</span>{% endif %}
+    </div>
+  </div>
+
+  <a class="card-link" href="{{ a.url }}">
+    <div class="meta">
+      <span title="data ogłoszenia">{{ icon('calendar', 'ic') }}{{ a.promulgation_date|datepl }}</span>
+      {% if a.status %}<span>{{ icon('info', 'ic') }}{{ a.status }}</span>{% endif %}
+    </div>
+    <div class="subdates">
+      <span>{{ icon('court', 'ic') }}{{ 'Dziennik Ustaw' if a.publisher == 'DU' else 'Monitor Polski' }}</span>
+      {% if a.keywords %}<span>{{ icon('tag', 'ic') }}{{ a.keywords[:4]|join(' · ') }}</span>{% endif %}
+    </div>
+    <p class="snippet">{{ a.title or '(bez tytułu)' }}</p>
+  </a>
+</article>
+{% endmacro %}

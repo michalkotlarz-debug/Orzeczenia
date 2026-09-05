@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_akt_card.html" import akt_card %}
+{% block title %}{{ q or 'Akty prawne' }} — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="searchband">
+  <div class="wrap narrow">
+    <form class="searchform" action="/akty" method="get" autocomplete="off">
+      <div class="searchbar">
+        {{ icon('search', 'ic lead') }}
+        <input type="search" name="q" value="{{ q }}" placeholder="Szukaj w tytułach i treści aktów…">
+        <button type="submit">Szukaj</button>
+      </div>
+      <div class="filters" data-filters>
+        <div class="fgrid">
+          <label>Typ <input type="text" name="act_type" value="{{ act_type }}" placeholder="np. Ustawa, Rozporządzenie"></label>
+          <label>Od <input type="date" name="date_from" value="{{ date_from }}"></label>
+          <label>Do <input type="date" name="date_to" value="{{ date_to }}"></label>
+        </div>
+        <div class="factions">
+          <button type="submit">Zastosuj filtry</button>
+          <a class="clear" href="/akty{% if q %}?q={{ q|urlencode }}{% endif %}">Wyczyść</a>
+        </div>
+      </div>
+    </form>
+  </div>
+</section>
+
+<section class="wrap">
+  <nav class="tabs">
+    {% for key, label in [('', 'Wszystkie'), ('1', 'Obowiązujące'), ('0', 'Nieobowiązujące')] %}
+    <a class="tab {% if in_force == key %}on{% endif %}" href="/akty?{{ params|urlencode_extra('in_force', key) }}">{{ label }}</a>
+    {% endfor %}
+  </nav>
+
+  {% if blad %}
+  <p class="warn">{{ icon('info', 'ic') }} {{ blad }}</p>
+  {% endif %}
+
+  <div class="resultsbar">
+    <p>Znaleziono <b>{{ "{:,}".format(total).replace(",", " ") }}</b>
+       {{ plural_pl(total, 'akt prawny', 'akty prawne', 'aktów prawnych') }}
+    </p>
+    <span class="pagesize">Na stronie:
+      {% for size in page_sizes|default([20, 50, 100]) %}<a
+        class="{% if (per_page|default(20)) == size %}on{% endif %}"
+        href="/akty?{{ params|urlencode_extra('per_page', size) }}">{{ size }}</a>{% endfor %}
+    </span>
+  </div>
+
+  <div class="cards">
+    {% for a in rows %}{{ akt_card(a) }}{% else %}
+    <div class="empty">
+      <p><b>Nic tu jeszcze nie ma</b></p>
+      <p>Import aktów prawnych dopiero trwa albo żaden akt nie pasuje do filtrów.</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if rows %}
+  <nav class="pager">
+    {% if page > 1 %}<a href="/akty?{{ params|urlencode_page(page-1) }}">{{ icon('arrow-left','ic') }} Poprzednia</a>{% else %}<span></span>{% endif %}
+    <span class="pos">strona {{ page }}</span>
+    <a href="/akty?{{ params|urlencode_page(page+1) }}">Następna {{ icon('arrow-right','ic') }}</a>
+  </nav>
+  {% endif %}
+</section>
+{% endblock %}
