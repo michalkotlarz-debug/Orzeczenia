@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_card.html" import result_card %}
 {% from "_icons.html" import icon %}
+{% from "_filter_chips.html" import filter_chips %}
 {% block title %}{{ q or 'Wyniki' }} — {{ site_name }}{% endblock %}
 {% block content %}
 <section class="searchband">
@@ -15,6 +16,9 @@
     </a>
     {% endfor %}
   </nav>
+
+  {{ filter_chips(params, [('Sygnatura', 'signature'), ('Sędzia', 'judge'),
+                          ('Hasło', 'thematic'), ('Podstawa prawna', 'legal_basis')]) }}
 
   <div class="resultsbar">
     <p>Znaleziono <b>{{ "{:,}".format(res.total).replace(",", " ") }}</b>

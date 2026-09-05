@@ -1,0 +1,22 @@
+{% from "_icons.html" import icon %}
+{# Pasek aktywnych filtrów jako usuwalne "chipsy" - każdy da się zdjąć osobno,
+   bez czyszczenia całego formularza. `chip_fields` to lista (etykieta, klucz
+   parametru); zakres dat (date_from/date_to) zawsze traktowany łącznie. #}
+{% macro filter_chips(params, chip_fields) %}
+{% set ns = namespace(any=false) %}
+{% for label, key in chip_fields %}{% if params.get(key) %}{% set ns.any = true %}{% endif %}{% endfor %}
+{% if params.get('date_from') or params.get('date_to') %}{% set ns.any = true %}{% endif %}
+{% if ns.any %}
+<div class="chipsbar">
+  {% for label, key in chip_fields %}
+  {% if params.get(key) %}
+  <a class="fchip" href="?{{ params|urlencode_extra(key, '') }}">{{ label }}: {{ params[key] }}{{ icon('close', 'ic x-ic') }}</a>
+  {% endif %}
+  {% endfor %}
+  {% if params.get('date_from') or params.get('date_to') %}
+  <a class="fchip" href="?{{ params|urlencode_remove('date_from', 'date_to') }}">
+    Zakres dat: {{ params.get('date_from', '…') }} – {{ params.get('date_to', '…') }}{{ icon('close', 'ic x-ic') }}</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endmacro %}

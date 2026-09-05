@@ -118,6 +118,7 @@ def _qs(params: dict[str, Any], **override: Any) -> str:
 
 templates.env.filters["urlencode_page"] = lambda p, page: _qs(p, page=page)
 templates.env.filters["urlencode_extra"] = lambda p, k, v: _qs(p, **{k: v, "page": 1})
+templates.env.filters["urlencode_remove"] = lambda p, *ks: _qs(p, **{k: "" for k in ks}, page=1)
 
 
 def _query(**kw: str) -> Query:

@@ -48,6 +48,7 @@ def _qs(p, **o):
 
 env.filters["urlencode_page"] = lambda p, page: _qs(p, page=page)
 env.filters["urlencode_extra"] = lambda p, k, v: _qs(p, **{k: v, "page": 1})
+env.filters["urlencode_remove"] = lambda p, *ks: _qs(p, **{k: "" for k in ks}, page=1)
 
 
 class R:

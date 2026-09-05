@@ -5,7 +5,9 @@
   <div class="searchbar">
     {{ icon('search', 'ic lead') }}
     <input type="search" name="q" value="{{ q|default('') }}"
-           placeholder="Szukaj w treści orzeczeń — np. odszkodowanie, rażąco niska cena, zasiedzenie">
+           placeholder="Szukaj w treści orzeczeń — np. odszkodowanie, rażąco niska cena, zasiedzenie"
+           list="dl-recent-orzeczenia" data-recent="orzeczenia">
+    <datalist id="dl-recent-orzeczenia"></datalist>
     <button type="submit">Szukaj</button>
   </div>
 

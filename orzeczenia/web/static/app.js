@@ -187,6 +187,39 @@
     }).catch(function () { /* strona ma już wartość wyrenderowaną na serwerze */ });
   }
 
+  /* Ostatnie wyszukiwania - podpowiedzi we wciaz pustym polu frazy, osobno
+     dla orzeczen i aktow prawnych (nie mieszamy dwoch roznych domen). */
+  var RECENT_MAX = 5;
+  function recentKey(scope) { return "orzecznik:ostatnie:" + scope; }
+  function readRecent(scope) {
+    try {
+      var v = JSON.parse(localStorage.getItem(recentKey(scope)));
+      return Array.isArray(v) ? v : [];
+    } catch (e) { return []; }
+  }
+  function saveRecent(scope, q) {
+    q = (q || "").trim();
+    if (!q) return;
+    try {
+      var items = readRecent(scope).filter(function (x) { return x !== q; });
+      items.unshift(q);
+      localStorage.setItem(recentKey(scope), JSON.stringify(items.slice(0, RECENT_MAX)));
+    } catch (e) { /* tryb prywatny */ }
+  }
+  document.querySelectorAll("input[data-recent]").forEach(function (input) {
+    var scope = input.getAttribute("data-recent");
+    var list = document.getElementById(input.getAttribute("list"));
+    if (list) {
+      list.innerHTML = readRecent(scope).map(function (v) {
+        return '<option value="' + v.replace(/"/g, "&quot;") + '">';
+      }).join("");
+    }
+    var form = input.closest("form");
+    if (form) {
+      form.addEventListener("submit", function () { saveRecent(scope, input.value); });
+    }
+  });
+
   render();
   bind();
   refreshCount();

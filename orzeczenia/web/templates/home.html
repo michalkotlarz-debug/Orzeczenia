@@ -3,7 +3,7 @@
 {% from "_icons.html" import icon %}
 {% block nav_extra %}
 <span class="doc-counter" title="Liczba orzeczeń w naszej bazie" data-doc-count>
-  {{ icon('gavel', 'ic') }} <b>{{ "{:,}".format(baza_razem|default(0)).replace(",", " ") }}</b> pobranych
+  {{ icon('gavel', 'ic') }} <b>{{ "{:,}".format(baza_razem|default(0)).replace(",", " ") }}</b> <span class="lbl">pobranych</span>
 </span>
 {% endblock %}
 {% block content %}

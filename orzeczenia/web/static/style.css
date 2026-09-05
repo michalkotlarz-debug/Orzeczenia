@@ -61,6 +61,18 @@ button{font:inherit;cursor:pointer}
 .fav-link .count{min-width:20px;height:20px;padding:0 6px;border-radius:20px;
   background:var(--navy-soft);color:var(--navy);font-size:11.5px;font-weight:700;
   display:grid;place-items:center}
+
+/* Na waskich ekranach cztery pozycje (Akty prawne, Ulubione, licznik, motyw)
+   nie miesza sie w jednym rzedzie - tekst obok ikon znika (ikony + tytul
+   zostaja dostepne dla czytnikow ekranu przez aria-label), zeby przycisk
+   motywu nigdy nie wypadal poza ekran zamiast się zawijac. */
+@media (max-width:600px){
+  .bar{gap:8px}
+  .bar nav{gap:2px}
+  .bar nav a{padding:7px 8px}
+  .bar nav .lbl{display:none}
+  .doc-counter{padding:7px 6px}
+}
 .doc-counter{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;
   font-size:14px;color:var(--muted)}
 .doc-counter b{color:var(--ink);font-weight:700}
@@ -140,6 +152,13 @@ main h2{font-size:17px;font-weight:650;letter-spacing:-.01em}
 .tab:hover{color:var(--ink);background:var(--band)}
 .tab.on{color:var(--ink);font-weight:600;background:var(--panel);border-color:var(--line)}
 .tab span{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* ---------------- aktywne filtry (chipsy) ---------------- */
+.chipsbar{display:flex;flex-wrap:wrap;gap:8px;margin:-6px 0 18px}
+.fchip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;
+  background:var(--navy-soft);color:var(--navy);font-size:12.5px;font-weight:600}
+.fchip:hover{background:var(--band);color:var(--ink)}
+.fchip .x-ic{width:.8em;height:.8em;opacity:.7}
 
 /* ---------------- karta wyniku ---------------- */
 .cards{display:flex;flex-direction:column;gap:12px}

@@ -1,17 +1,27 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% from "_akt_card.html" import akt_card %}
+{% from "_filter_chips.html" import filter_chips %}
 {% block title %}{{ q or 'Akty prawne' }} — {{ site_name }}{% endblock %}
 {% block content %}
+{% set has_adv = act_type or date_from or date_to %}
 <section class="searchband">
   <div class="wrap narrow">
     <form class="searchform" action="/akty" method="get" autocomplete="off">
       <div class="searchbar">
         {{ icon('search', 'ic lead') }}
-        <input type="search" name="q" value="{{ q }}" placeholder="Szukaj w tytułach i treści aktów…">
+        <input type="search" name="q" value="{{ q }}" placeholder="Szukaj w tytułach i treści aktów…"
+               list="dl-recent-akty" data-recent="akty">
+        <datalist id="dl-recent-akty"></datalist>
         <button type="submit">Szukaj</button>
       </div>
-      <div class="filters" data-filters>
+
+      <button class="filters-toggle" type="button" data-filters-toggle aria-expanded="{{ 'true' if has_adv else 'false' }}">
+        {{ icon('sliders', 'ic') }} <span>Filtry</span>
+        {% if has_adv %}<span class="dot"></span>{% endif %}
+      </button>
+
+      <div class="filters" data-filters {% if not has_adv %}hidden{% endif %}>
         <div class="fgrid">
           <label>Typ <input type="text" name="act_type" value="{{ act_type }}" placeholder="np. Ustawa, Rozporządzenie"></label>
           <label>Od <input type="date" name="date_from" value="{{ date_from }}"></label>
@@ -32,6 +42,8 @@
     <a class="tab {% if in_force == key %}on{% endif %}" href="/akty?{{ params|urlencode_extra('in_force', key) }}">{{ label }}</a>
     {% endfor %}
   </nav>
+
+  {{ filter_chips(params, [('Typ', 'act_type')]) }}
 
   {% if blad %}
   <p class="warn">{{ icon('info', 'ic') }} {{ blad }}</p>

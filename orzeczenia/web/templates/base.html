@@ -22,8 +22,8 @@
       <span class="name">{{ site_name }}</span>
     </a>
     <nav>
-      <a class="fav-link" href="/akty">{{ icon('scales', 'ic') }} Akty prawne</a>
-      <a class="fav-link" href="/ulubione">{{ icon('heart', 'ic') }} Ulubione
+      <a class="fav-link" href="/akty" aria-label="Akty prawne">{{ icon('scales', 'ic') }} <span class="lbl">Akty prawne</span></a>
+      <a class="fav-link" href="/ulubione" aria-label="Ulubione">{{ icon('heart', 'ic') }} <span class="lbl">Ulubione</span>
         <span class="count" data-fav-count hidden>0</span></a>
       {% block nav_extra %}{% endblock %}
       <button class="theme-toggle" type="button" data-theme-toggle title="Przełącz jasny/ciemny motyw" aria-label="Przełącz jasny/ciemny motyw">
