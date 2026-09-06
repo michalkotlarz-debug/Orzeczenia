@@ -12,3 +12,7 @@ psycopg[binary]>=3.1
 # Wyciąganie tekstu z PDF-ów aktów prawnych, które nie mają jeszcze HTML-a
 # (sources/sejm_eli.py) - sam PDF nigdy nie trafia na dysk.
 pdfminer.six>=20231228
+# Wykrywanie tabel w tych samych PDF-ach po geometrii (nie samym liniowym
+# tekście jak pdfminer) - pdfminer.six jest jego zależnością, więc to nie
+# dokłada drugiego, niezależnego silnika PDF.
+pdfplumber>=0.11

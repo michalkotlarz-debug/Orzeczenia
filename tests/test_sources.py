@@ -332,6 +332,10 @@ check("zagnieżdżony rozstrzelony nagłówek innego typu aktu -> odtworzony jak
      clean_pdf_text("OBWIESZCZENIE\n\nRO ZPO RZ ĄD Z E N I E\n\nM INI S TR A ZD RO WI A 1)\n\n"
                     "z dnia 20 maja 2024 r.", act_type="Obwieszczenie"),
      "OBWIESZCZENIE\nROZPORZĄDZENIE\nz dnia 20 maja 2024 r.")
+check("blok tabeli z parse/pdf_tables.py (sentinel) przechodzi bez zmian, nie jak zwykly akapit",
+     clean_pdf_text("Art. 1. Coś tam.\n\n@@TABLE@@<table><tr><td>I</td><td>100</td></tr></table>\n\n"
+                    "Art. 2. Dalej."),
+     "Art. 1. Coś tam.\n@@TABLE@@<table><tr><td>I</td><td>100</td></tr></table>\nArt. 2. Dalej.")
 check("tabela dwukolumnowa czytana kolumnami (etykiety, potem wartości) -> sparowana w wiersze",
      clean_pdf_text("Kategoria zaszeregowania\n\nI\n\nII\n\nIII\n\nKwota w zł\n\n"
                     "4806–7470\n\n4816–7510\n\n4826–7630\n\nArt. 1. Dalej."),

@@ -5,6 +5,8 @@ import re
 import unicodedata
 from datetime import date
 
+from .pdf_tables import TABLE_SENTINEL
+
 PL_MONTHS = {
     "stycznia": 1, "styczeń": 1, "styczen": 1,
     "lutego": 2, "luty": 2,
@@ -643,6 +645,12 @@ def clean_pdf_text(text: str | None, act_type: str | None = None) -> str | None:
         block = re.sub(r"\s*\n\s*", " ", block).strip()
         block = re.sub(r" {2,}", " ", block).strip()
         if not block:
+            continue
+        if block.startswith(TABLE_SENTINEL):
+            # Gotowy blok tabeli z parse/pdf_tables.py (wykryty po geometrii
+            # PDF-a) - to już czysty HTML w jednej linii, żadna z reguł niżej
+            # (nagłówki, przypisy, tabele-kolumnami) go nie dotyczy.
+            blocks.append(block)
             continue
         if _PDF_FOOTNOTE_RE.match(block) or _PDF_FOOTNOTE_RE2.match(block):
             continue

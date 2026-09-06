@@ -25,6 +25,7 @@ from typing import Any
 from bs4 import BeautifulSoup
 
 from ..parse.common import clean_akt_html_text, clean_pdf_text, html_text
+from ..parse.pdf_tables import pdf_to_text_with_tables
 
 log = logging.getLogger("orzecznik.eli")
 
@@ -83,7 +84,17 @@ class EliClient:
             try:
                 pdf_bytes = self.http.get_bytes(
                     self._url(f"/acts/{publisher}/{year}/{pos}/text.pdf"))
-                text = pdf_to_text(pdf_bytes).strip()
+                try:
+                    # Ścieżka z wykrywaniem tabel po geometrii (pdfplumber) -
+                    # patrz parse/pdf_tables.py. Awaria tego kroku (np.
+                    # nietypowo zbudowany PDF) nie może przekreślić importu
+                    # całego aktu - wracamy wtedy do zwykłego liniowego
+                    # tekstu pdfminer, tak jak dotąd.
+                    text = pdf_to_text_with_tables(pdf_bytes).strip()
+                except Exception:
+                    log.warning("%s/%s/%s: wykrywanie tabel w PDF nie powiodło się, "
+                               "zwykły tekst liniowy", publisher, year, pos)
+                    text = pdf_to_text(pdf_bytes).strip()
                 text = clean_pdf_text(text, act_type=meta.get("type"))
                 if text:
                     return text, "pdf"

@@ -24,6 +24,7 @@ from fastapi.templating import Jinja2Templates
 from ..config import load_config
 from ..format import date_pl, plural_pl
 from ..parse.common import legal_basis_terms_for_akt
+from ..parse.pdf_tables import TABLE_SENTINEL
 from ..sources import Query, Registry
 from ..sources.base import SearchPage
 from ..store import Store
@@ -97,6 +98,7 @@ templates.env.globals.update(
     sort_labels={"relevance": "trafność", "date_desc": "data orzeczenia ↓",
                  "date_asc": "data orzeczenia ↑", "pub_desc": "data publikacji ↓"},
     plural_pl=plural_pl,
+    TABLE_SENTINEL=TABLE_SENTINEL,
 )
 templates.env.filters["datepl"] = date_pl
 

@@ -298,6 +298,14 @@ main h2{font-size:17px;font-weight:650;letter-spacing:-.01em}
 .text p{margin:0 0 .9em}
 .text p:empty{display:none}
 
+/* ---------------- tabele wykryte w PDF-ach aktów (parse/pdf_tables.py) ---------------- */
+.text .pdf-table-wrap{max-width:none;overflow-x:auto;margin:0 0 1.4em}
+.pdf-table{width:100%;border-collapse:collapse;font-size:14px}
+.pdf-table th,.pdf-table td{padding:8px 12px;border:1px solid var(--line);text-align:left;
+  vertical-align:top}
+.pdf-table thead th{background:var(--band);font-weight:600;color:var(--ink)}
+.pdf-table tbody tr:nth-child(even){background:var(--line-soft)}
+
 /* ---------------- stopka ---------------- */
 .footer{border-top:1px solid var(--line);background:var(--band);padding:26px 0;margin-top:20px}
 .footer p{color:var(--muted);font-size:12.5px;line-height:1.6;max-width:84ch}
