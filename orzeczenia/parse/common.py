@@ -383,6 +383,51 @@ def extract_panel(text: str | None, window: int = 3000) -> list[dict[str, str]]:
 
 
 # ----------------------------------------------------------------------
+# Łączenie karty aktu z orzecznictwem, które się na niego powołuje. Pole
+# `legal_basis` przy orzeczeniu to WOLNY TEKST wpisywany przez portal
+# źródłowy (np. "art. 385 (1) k.c.", "art. 204 § 2 kk", "KWU") - nie ma w nim
+# identyfikatora aktu, więc nie da się tego rzetelnie dopasować dla KAŻDEGO
+# aktu. Działa dobrze tylko dla garstki dużych kodeksów/ustaw, które sądy
+# cytują charakterystycznym, powtarzalnym skrótem - dla zwykłych rozporządzeń
+# dopasowanie po samym tytule byłoby zawodne (zbyt wiele przypadkowych
+# trafień), więc świadomie NIE próbujemy go tam robić.
+_MAJOR_CODES: list[tuple[str, list[str]]] = [
+    ("kodeks cywilny", ["k.c.", "kc"]),
+    ("kodeks karny wykonawczy", ["k.k.w.", "kkw"]),
+    ("kodeks karny skarbowy", ["k.k.s.", "kks"]),
+    ("kodeks karny", ["k.k.", "kk"]),
+    ("kodeks postępowania cywilnego", ["k.p.c.", "kpc"]),
+    ("kodeks postępowania karnego", ["k.p.k.", "kpk"]),
+    ("kodeks postępowania administracyjnego", ["k.p.a.", "kpa"]),
+    ("kodeks rodzinny i opiekuńczy", ["k.r.o.", "kro"]),
+    ("kodeks pracy", ["k.p."]),
+    ("kodeks spółek handlowych", ["k.s.h.", "ksh"]),
+    ("kodeks wykroczeń", ["k.w."]),
+    ("prawo o ruchu drogowym", ["prawo o ruchu drogowym"]),
+    ("prawo bankowe", ["prawo bankowe"]),
+    ("prawo zamówień publicznych", ["prawo zamówień publicznych", "p.z.p.", "pzp"]),
+    ("prawo upadłościowe", ["prawo upadłościowe"]),
+    ("ordynacja podatkowa", ["ordynacja podatkowa", "ordynacji podatkowej", "o.p."]),
+    ("o księgach wieczystych i hipotece", ["KWU"]),
+    ("konstytucja rzeczypospolitej polskiej", ["konstytucji", "konstytucja rp"]),
+]
+
+
+def legal_basis_terms_for_akt(title: str | None) -> list[str] | None:
+    """Warianty zapisu skrótu (np. ['k.c.', 'kc']), po jakich sądy zwyczajowo
+    cytują TEN akt w polu `legal_basis` - albo None, gdy to nie jeden z
+    rozpoznanych dużych kodeksów/ustaw. Dopasowanie po nazwie w tytule aktu,
+    bo to jedyne, co dla obu stron (akt / orzeczenie) mamy wspólne."""
+    if not title:
+        return None
+    low = title.lower()
+    for name, terms in _MAJOR_CODES:
+        if name in low:
+            return terms
+    return None
+
+
+# ----------------------------------------------------------------------
 # podział sentencja / uzasadnienie
 # ----------------------------------------------------------------------
 # W tekstach z KIO uzasadnienie bywa rozstrzelone: "U z a s a d n i e n i e"

@@ -720,6 +720,47 @@ class Store:
             f"GROUP BY source", params)
         return {r["source"]: r["n"] for r in rows}
 
+    def thematic_counts(self) -> list[dict[str, Any]]:
+        """Wszystkie hasła tematyczne użyte choć raz, z liczbą orzeczeń przy
+        każdym - dla strony `/hasla` (indeks, wejście od tematu zamiast od
+        frazy). `thematic` to zserializowana lista JSON w każdym wierszu,
+        więc agregacja liczona jest po stronie Pythona (nie ma tu SQL-a,
+        który działałby jednakowo na SQLite i Postgresie bez dodatkowych
+        rozszerzeń) - tabela orzeczeń jest wystarczająco mała, żeby to było
+        szybkie nawet bez cache'owania."""
+        from collections import Counter
+        rows = self._rows(
+            "SELECT thematic FROM orzeczenia WHERE thematic IS NOT NULL AND thematic != '[]'")
+        counts: Counter[str] = Counter()
+        for r in rows:
+            try:
+                values = json.loads(r["thematic"] or "[]")
+            except (TypeError, ValueError):
+                continue
+            for v in values:
+                if v:
+                    counts[v] += 1
+        return [{"name": name, "count": n} for name, n in counts.items()]
+
+    def search_by_legal_basis_terms(self, terms: list[str],
+                                    limit: int = 6) -> tuple[list[dict[str, Any]], int]:
+        """Orzeczenia, których `legal_basis` zawiera KTÓRYKOLWIEK z podanych
+        wariantów zapisu (np. ['k.c.', 'kc'] dla Kodeksu cywilnego) - do
+        sekcji 'Orzecznictwo powołujące się na ten akt' na stronie aktu.
+        Działa dobrze tylko dla dużych kodeksów/ustaw, po których sądy
+        zwyczajowo cytują skrótem - patrz `legal_basis_terms_for_akt()`."""
+        terms = [squash(t) for t in terms if squash(t)]
+        if not terms:
+            return [], 0
+        like = self._like()
+        where = " OR ".join([f"legal_basis {like} ?"] * len(terms))
+        params: list[Any] = [f"%{t}%" for t in terms]
+        total = self._rows(f"SELECT COUNT(*) AS n FROM orzeczenia WHERE {where}", params)[0]["n"]
+        rows = self._rows(
+            f"SELECT * FROM orzeczenia WHERE {where} ORDER BY judgment_date DESC LIMIT ?",
+            [*params, int(limit)])
+        return [self._decode(r) for r in rows], int(total)
+
     def suggest(self, field: str, prefix: str, limit: int = 8) -> list[str]:
         """Podpowiedzi do autouzupełniania pól filtra na podstawie wartości już
         obecnych w bazie - użytkownik trafia w istniejącą pisownię (np. dokładne
@@ -982,6 +1023,10 @@ class Store:
     def count_akty(self) -> dict[str, int]:
         rows = self._rows("SELECT publisher, COUNT(*) AS n FROM akty_prawne GROUP BY publisher")
         return {r["publisher"]: r["n"] for r in rows}
+
+    def count_akty_jednolity(self) -> int:
+        rows = self._rows("SELECT COUNT(*) AS n FROM akty_prawne WHERE has_jednolity = 1")
+        return int(rows[0]["n"]) if rows else 0
 
     def max_akty_changed(self) -> str | None:
         """Najświeższe 'changeDate' (z API), jakie już mamy - kursor do

@@ -369,6 +369,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     rows, total = store.search_akty(jednolity="1")
     check("filtr jednolity=1 zwraca tylko akty z tekstem jednolitym", total, 2)
+    check("count_akty_jednolity liczy tak samo", store.count_akty_jednolity(), 2)
 
     related = store.get_akty_by_ids(["DU/2023/50", "DU/2021/9", "DU/9999/1"])
     check("get_akty_by_ids zwraca pelne rekordy dla znanych id",
@@ -440,6 +441,26 @@ with tempfile.TemporaryDirectory() as tmp:
     finally:
         obserwator.run_source = orig_run_source
         obserwator.import_ms_batch = orig_batch
+    store.close()
+
+# ----------------------------------------------------------------------
+print("\n== thematic_counts / search_by_legal_basis_terms (indeks hasel, karta aktu) ==")
+with tempfile.TemporaryDirectory() as tmp:
+    store = Store(f"sqlite:///{tmp}/test.sqlite3", keep_days=400)
+    store.upsert_documents([
+        doc("A1", "wyrok", thematic=["Alimenty", "Kara"], legal_basis="art. 385 (1) kc"),
+        doc("A2", "wyrok", thematic=["Alimenty"], legal_basis="art. 498 k.c."),
+        doc("A3", "wyrok", thematic=["Kara"], legal_basis="art. 204 § 2 kk"),
+    ])
+    counts = {h["name"]: h["count"] for h in store.thematic_counts()}
+    check("liczebnosc hasla wystepujacego dwa razy", counts.get("Alimenty"), 2)
+    check("liczebnosc hasla wystepujacego raz", counts.get("Kara"), 2)
+
+    rows, total = store.search_by_legal_basis_terms(["k.c.", "kc"])
+    check("dwa warianty zapisu skrotu -> oba orzeczenia znalezione", total, 2)
+    check("zaden wariant nie pasuje -> pusto",
+         store.search_by_legal_basis_terms(["k.p.a."])[1], 0)
+    check("pusta lista terminow -> pusto", store.search_by_legal_basis_terms([]), ([], 0))
     store.close()
 
 # ----------------------------------------------------------------------

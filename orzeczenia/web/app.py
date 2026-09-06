@@ -25,6 +25,7 @@ from fastapi.templating import Jinja2Templates
 
 from ..config import load_config
 from ..format import date_pl, plural_pl
+from ..parse.common import legal_basis_terms_for_akt
 from ..sources import Query, Registry
 from ..sources.base import SearchPage
 from ..store import Store
@@ -180,12 +181,19 @@ def home(request: Request, date_field: str = "publication"):
     date_field = date_field if date_field in ("judgment", "publication") else "publication"
     store = get_store()
     since = (date.today() - timedelta(days=NOWE_LOOKBACK_DAYS)).isoformat()
-    latest_rows = (store.latest(limit=8, since=since, date_field=date_field)
+    latest_rows = (store.latest(limit=6, since=since, date_field=date_field)
                   if store else [])
     baza = store.count() if store else {}
+    latest_akty = store.latest_akty(limit=6) if store else []
+    baza_akty = store.count_akty() if store else {}
+    baza_akty_jednolite = store.count_akty_jednolity() if store else 0
+    top_hasla = (sorted(store.thematic_counts(), key=lambda h: -h["count"])[:8]
+                if store else [])
     return templates.TemplateResponse(request, "home.html", {
         "latest_rows": latest_rows, "date_field": date_field,
-        "baza": baza, "baza_razem": sum(baza.values())})
+        "baza": baza, "baza_razem": sum(baza.values()),
+        "latest_akty": latest_akty, "baza_akty_razem": sum(baza_akty.values()),
+        "baza_akty_jednolite": baza_akty_jednolite, "top_hasla": top_hasla})
 
 
 @app.get("/szukaj", response_class=HTMLResponse)
@@ -331,6 +339,16 @@ def akt_page(request: Request, publisher: str, year: int, pos: int):
         return [related.get(i) or {"id": i} for i in ids]
 
     jednolity_target_ids = _akt_ref_ids(refs, "Inf. o tekście jednolitym")
+
+    # "Orzecznictwo powołujące się na ten akt" - działa tylko dla garstki
+    # dużych kodeksów/ustaw rozpoznawanych po tytule (patrz uzasadnienie w
+    # legal_basis_terms_for_akt) - dla zwykłych rozporządzeń sekcja po prostu
+    # się nie pokazuje, zamiast zgadywać i pokazywać przypadkowe trafienia.
+    citing_terms = legal_basis_terms_for_akt(akt.get("title"))
+    citing_rulings, citing_total = (
+        store.search_by_legal_basis_terms(citing_terms, limit=6)
+        if citing_terms else ([], 0))
+
     context = {
         "a": akt, "existing_refs": existing_refs,
         # gdy TEN akt jest obwieszczeniem publikującym tekst jednolity -
@@ -341,8 +359,17 @@ def akt_page(request: Request, publisher: str, year: int, pos: int):
         "jednolity_target": _lookup(jednolity_target_ids[-1:]),
         "later_amendments": _lookup(_akt_ref_ids(refs, "Nowelizacje po tekście jednolitym")),
         "wykonawcze": _lookup(_akt_ref_ids(refs, "Akty wykonawcze")),
+        "citing_rulings": citing_rulings, "citing_total": citing_total,
+        "citing_term": citing_terms[0] if citing_terms else "",
     }
     return templates.TemplateResponse(request, "akt.html", context)
+
+
+@app.get("/hasla", response_class=HTMLResponse)
+def hasla_page(request: Request):
+    store = get_store()
+    hasla = sorted(store.thematic_counts(), key=lambda h: h["name"].lower()) if store else []
+    return templates.TemplateResponse(request, "hasla.html", {"hasla": hasla})
 
 
 @app.get("/api/akty")

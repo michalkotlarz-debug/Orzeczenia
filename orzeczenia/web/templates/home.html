@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_card.html" import result_card %}
+{% from "_akt_card.html" import akt_card %}
 {% from "_icons.html" import icon %}
 {% block nav_extra %}
 <span class="doc-counter" title="Liczba orzeczeń w naszej bazie" data-doc-count>
@@ -16,23 +17,62 @@
 </section>
 
 <section class="wrap">
-  <div class="section-head">
-    <h2>Ostatnio opublikowane</h2>
-    <a class="more" href="/nowe">Zobacz więcej</a>
+  <div class="stat-bar">
+    <a class="stat" href="/szukaj"><b>{{ "{:,}".format(baza_razem).replace(",", " ") }}</b><span>orzeczeń w bazie</span></a>
+    <a class="stat" href="/akty"><b>{{ "{:,}".format(baza_akty_razem).replace(",", " ") }}</b><span>aktów prawnych</span></a>
+    <a class="stat" href="/akty?jednolity=1"><b>{{ "{:,}".format(baza_akty_jednolite).replace(",", " ") }}</b><span>z tekstem jednolitym</span></a>
   </div>
-  <nav class="tabs">
-    <a class="tab {% if date_field == 'judgment' %}on{% endif %}" href="/?date_field=judgment">Data orzeczenia</a>
-    <a class="tab {% if date_field != 'judgment' %}on{% endif %}" href="/?date_field=publication">Data publikacji</a>
-  </nav>
-  {% if latest_rows %}
-  <div class="cards">{% for h in latest_rows %}{{ result_card(h) }}{% endfor %}</div>
-  {% else %}
-  <div class="empty">
-    <p><b>Brak orzeczeń{% if date_field == 'judgment' %} wydanych{% else %} opublikowanych{% endif %} w ostatnich dwóch tygodniach</b></p>
-    <p>Wyszukiwanie może nadal działać — spróbuj przez <a href="/szukaj">wyszukiwarkę</a>.</p>
-  </div>
-  {% endif %}
 </section>
+
+<section class="wrap">
+  <div class="cols2">
+    <div>
+      <div class="section-head">
+        <h2>Ostatnio opublikowane orzeczenia</h2>
+        <a class="more" href="/nowe">Zobacz więcej</a>
+      </div>
+      <nav class="tabs">
+        <a class="tab {% if date_field == 'judgment' %}on{% endif %}" href="/?date_field=judgment">Data orzeczenia</a>
+        <a class="tab {% if date_field != 'judgment' %}on{% endif %}" href="/?date_field=publication">Data publikacji</a>
+      </nav>
+      {% if latest_rows %}
+      <div class="cards">{% for h in latest_rows %}{{ result_card(h) }}{% endfor %}</div>
+      {% else %}
+      <div class="empty">
+        <p><b>Brak orzeczeń{% if date_field == 'judgment' %} wydanych{% else %} opublikowanych{% endif %} w ostatnich dwóch tygodniach</b></p>
+        <p>Wyszukiwanie może nadal działać — spróbuj przez <a href="/szukaj">wyszukiwarkę</a>.</p>
+      </div>
+      {% endif %}
+    </div>
+    <div>
+      <div class="section-head">
+        <h2>Ostatnio ogłoszone akty</h2>
+        <a class="more" href="/akty">Zobacz więcej</a>
+      </div>
+      {% if latest_akty %}
+      <div class="cards">{% for a in latest_akty %}{{ akt_card(a) }}{% endfor %}</div>
+      {% else %}
+      <div class="empty">
+        <p><b>Brak aktów prawnych w bazie</b></p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+{% if top_hasla %}
+<section class="wrap">
+  <div class="section-head">
+    <h2>Przeglądaj według hasła</h2>
+    <a class="more" href="/hasla">Cały indeks</a>
+  </div>
+  <div class="hasla-teaser">
+    {% for h in top_hasla %}
+    <a class="chip" href="/szukaj?thematic={{ h.name|urlencode }}">{{ h.name }} <b>{{ "{:,}".format(h.count).replace(",", " ") }}</b></a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
 
 <section class="wrap">
   <h2>Jak to działa</h2>

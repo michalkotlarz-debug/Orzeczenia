@@ -116,7 +116,8 @@ try:
     q = Query(phrase="wadium")
 
     render("home.html", "1-strona-glowna.html", latest_rows=reg.search(Query(sort="pub_desc")).hits,
-          date_field="publication")
+          date_field="publication", baza_razem=34078, latest_akty=[], baza_akty_razem=12426,
+          baza_akty_jednolite=2536, top_hasla=[{"name": "Zamówienia publiczne", "count": 34065}])
 
     res = reg.search(q, page=1)
     h = render("results.html", "2-wyniki.html", q="wadium", res=res, query=q, page=1,

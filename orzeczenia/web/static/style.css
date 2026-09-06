@@ -148,6 +148,29 @@ main h2{font-size:17px;font-weight:650;letter-spacing:-.01em}
 .more{font-size:13.5px;color:var(--muted)}
 .more:hover{color:var(--ink)}
 
+/* ---------------- pasek liczników na stronie głównej ---------------- */
+.stat-bar{display:flex;gap:28px;flex-wrap:wrap}
+.stat{flex:1;min-width:160px;border-left:2px solid var(--navy);padding:2px 0 2px 14px}
+.stat b{display:block;font-family:var(--mono);font-size:22px;font-weight:600;color:var(--ink)}
+.stat span{font-size:12.5px;color:var(--muted)}
+.stat:hover b{color:var(--navy)}
+
+/* ---------------- dwie kolumny (orzeczenia / akty) na stronie głównej ---------------- */
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:36px}
+@media(max-width:860px){.cols2{grid-template-columns:1fr}}
+
+/* ---------------- hasła: podpowiedzi na stronie głównej + pełny indeks ---------------- */
+.hasla-teaser{display:flex;flex-wrap:wrap;gap:9px}
+.hasla-teaser .chip{margin:0}
+.hasla-teaser .chip b{font-weight:600;color:var(--muted);margin-left:5px;font-family:var(--mono);font-size:11px}
+.hasla-index{columns:3;column-gap:28px}
+@media(max-width:860px){.hasla-index{columns:2}}
+@media(max-width:560px){.hasla-index{columns:1}}
+.hasla-item{display:flex;justify-content:space-between;gap:12px;padding:9px 0;
+  border-bottom:1px solid var(--line-soft);break-inside:avoid;font-size:14px;color:var(--ink-soft)}
+.hasla-item:hover{color:var(--navy)}
+.hasla-item b{font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:500}
+
 /* ---------------- zakładki źródeł ---------------- */
 .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:20px;border-bottom:1px solid var(--line)}
 .tab{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:10px 10px 0 0;

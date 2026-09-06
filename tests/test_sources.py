@@ -15,8 +15,9 @@ from orzeczenia.format import date_pl, plural_pl                     # noqa: E40
 from orzeczenia.http import SourceUnavailable, TTLCache, looks_blocked  # noqa: E402
 from orzeczenia.parse.common import (clean_akt_html_text, clean_pdf_text,  # noqa: E402
                                      detect_doc_type,  # noqa: E402
-                                     detect_doc_types, extract_panel, normalize_signature,
-                                     parse_date, split_sentencja_uzasadnienie)
+                                     detect_doc_types, extract_panel, legal_basis_terms_for_akt,
+                                     normalize_signature, parse_date,
+                                     split_sentencja_uzasadnienie)
 from orzeczenia.sources.base import Query                            # noqa: E402
 from orzeczenia.sources.kio_uzp import KioSource                     # noqa: E402
 from orzeczenia.sources.ms_gov import MsSource                       # noqa: E402
@@ -387,6 +388,17 @@ check("etykiety Spis treści / Pokaż całość -> usunięte",
                          "Prawdziwa treść.\nPokaż całość"),
      "Tytuł aktu\nPrawdziwa treść.")
 check("puste wejście nie crashuje (html)", clean_akt_html_text(None), None)
+
+print("\n== legal_basis_terms_for_akt: mapowanie duzych kodeksow na skroty w legal_basis ==")
+check("Kodeks cywilny -> warianty k.c.",
+     legal_basis_terms_for_akt("Ustawa z dnia 23 kwietnia 1964 r. - Kodeks cywilny"),
+     ["k.c.", "kc"])
+check("Kodeks karny wykonawczy NIE trafia w krotszy 'Kodeks karny'",
+     legal_basis_terms_for_akt("Ustawa - Kodeks karny wykonawczy"),
+     ["k.k.w.", "kkw"])
+check("zwykle rozporzadzenie -> brak dopasowania (None)",
+     legal_basis_terms_for_akt("Rozporządzenie Ministra Finansów w sprawie wagi ryzyka"), None)
+check("brak tytulu -> None", legal_basis_terms_for_akt(None), None)
 check("idempotentne (html) - drugie przejście nic już nie zmienia",
      clean_akt_html_text(clean_akt_html_text("Ministra Finansówz dnia 1 maja 2024 r.")),
      clean_akt_html_text("Ministra Finansówz dnia 1 maja 2024 r."))

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% from "_akt_card.html" import akt_card %}
+{% from "_card.html" import result_card %}
 {% set _JEDNOLITY_GRUPY = ('Tekst jednolity dla aktu', 'Inf. o tekście jednolitym',
                           'Nowelizacje po tekście jednolitym', 'Akty wykonawcze') %}
 {% block title %}{{ a.publisher }} {{ a.year }} poz. {{ a.pos }} — {{ site_name }}{% endblock %}
@@ -69,6 +70,17 @@
           {% endif %}
         {% endfor %}
       </div>
+    </section>
+    {% endif %}
+
+    {% if citing_rulings %}
+    <section class="block">
+      <h2>Orzecznictwo powołujące się na ten akt</h2>
+      <div class="cards">{% for r in citing_rulings %}{{ result_card(r) }}{% endfor %}</div>
+      {% if citing_total > citing_rulings|length %}
+      <p class="fhint">{{ icon('info','ic') }} Pokazano {{ citing_rulings|length }} z {{ citing_total }} —
+        <a href="/szukaj?legal_basis={{ citing_term|urlencode }}">zobacz wszystkie</a>.</p>
+      {% endif %}
     </section>
     {% endif %}
 

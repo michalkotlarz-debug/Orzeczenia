@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Indeks haseł — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="wrap narrow">
+  <h1>Indeks haseł tematycznych</h1>
+  <p class="lede">Wszystkie hasła tematyczne przypisane choć raz do orzeczenia w naszej bazie —
+     kliknij, żeby zobaczyć orzeczenia z danym hasłem.</p>
+</section>
+
+<section class="wrap">
+  {% if hasla %}
+  <div class="hasla-index">
+    {% for h in hasla %}
+    <a class="hasla-item" href="/szukaj?thematic={{ h.name|urlencode }}">
+      <span>{{ h.name }}</span>
+      <b>{{ "{:,}".format(h.count).replace(",", " ") }}</b>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">
+    <p><b>Brak haseł tematycznych w bazie</b></p>
+    <p>Import orzeczeń dopiero trwa — hasła pojawią się tu automatycznie.</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

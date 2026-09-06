@@ -34,7 +34,6 @@
         {% for j in d.judges %}{{ j.name }}<span class="role">{{ j.role }}</span>{% if not loop.last %}, {% endif %}{% endfor %}
       </dd></div>
       {% endif %}
-      {% if d.outcome %}<div><dt>{{ icon('check','ic') }} Rozstrzygnięcie</dt><dd>{{ d.outcome }}</dd></div>{% endif %}
       {% if d.purchaser %}<div><dt>{{ icon('court','ic') }} Zamawiający</dt><dd>{{ d.purchaser }}</dd></div>{% endif %}
       {% if d.thematic %}<div class="wide"><dt>{{ icon('tag','ic') }} Hasła tematyczne</dt><dd>
         {% for t in d.thematic %}<span class="chip">{{ t }}</span>{% endfor %}</dd></div>{% endif %}
