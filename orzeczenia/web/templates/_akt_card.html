@@ -8,6 +8,7 @@
       <a class="sig" href="{{ a.url }}">{{ a.publisher }} {{ a.year }} poz. {{ a.pos }}</a>
     </div>
     <div class="tools">
+      {% if a.has_jednolity %}<span class="badge jednolity" title="Ma opublikowany tekst jednolity">{{ icon('book', 'ic') }}</span>{% endif %}
       {% if a.in_force == 'IN_FORCE' %}<span class="badge on" title="Obowiązuje">{{ icon('check', 'ic') }}</span>{% endif %}
     </div>
   </div>

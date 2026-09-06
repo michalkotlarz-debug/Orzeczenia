@@ -8,6 +8,7 @@
   --line:#e7e4de; --line-soft:#f0eeea;
   --navy:#1e3a5f; --navy-ink:#ffffff; --navy-soft:#eef2f7;
   --amber:#c1873c; --mark:#fdf0b8;
+  --green:#2f7a4d; --green-soft:#eaf5ee;
   --shadow:0 1px 2px rgba(20,22,28,.04), 0 8px 24px rgba(20,22,28,.05);
   --r:14px; --maxw:1140px;
   --serif:"Iowan Old Style","Palatino Linotype",Palatino,Cambria,Georgia,"Times New Roman",serif;
@@ -20,6 +21,7 @@
     --muted:#949aa5; --line:#2c3038; --line-soft:#23262c;
     --navy:#7ea9d8; --navy-ink:#10141a; --navy-soft:#1e2833;
     --amber:#d3a163; --mark:#544a1c;
+    --green:#7fc79a; --green-soft:#1b2e21;
     --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
   }
 }
@@ -28,6 +30,7 @@
   --muted:#949aa5; --line:#2c3038; --line-soft:#23262c;
   --navy:#7ea9d8; --navy-ink:#10141a; --navy-soft:#1e2833;
   --amber:#d3a163; --mark:#544a1c;
+  --green:#7fc79a; --green-soft:#1b2e21;
   --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
 }
 *{box-sizing:border-box}
@@ -203,6 +206,18 @@ main h2{font-size:17px;font-weight:650;letter-spacing:-.01em}
 .warn{display:flex;gap:9px;align-items:flex-start;background:var(--navy-soft);color:var(--ink-soft);
   border-radius:10px;padding:11px 14px;font-size:13.5px;margin-bottom:16px}
 .warn .ic{color:var(--navy);margin-top:.15em}
+
+/* ---------------- tekst jednolity: baner, plakietka, ostrzeżenie ---------------- */
+.badge.jednolity{background:var(--green-soft);border-color:var(--green);color:var(--green)}
+.badge.jednolity .ic{color:var(--green)}
+.notice{display:flex;gap:10px;align-items:flex-start;border-radius:var(--r);
+  padding:14px 16px;font-size:13.5px;margin:18px 0}
+.notice p{line-height:1.6}
+.notice .ic{margin-top:.2em;flex:none}
+.notice-good{background:var(--green-soft);color:var(--ink-soft)}
+.notice-good .ic{color:var(--green)}
+.notice-warn{background:var(--navy-soft);color:var(--ink-soft)}
+.notice-warn .ic{color:var(--amber)}
 .resultsbar{display:flex;align-items:center;justify-content:space-between;gap:16px;
   padding-bottom:16px;margin-bottom:20px;border-bottom:1px solid var(--line);font-size:14px;
   flex-wrap:wrap}

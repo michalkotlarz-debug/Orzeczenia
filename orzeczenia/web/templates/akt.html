@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_akt_card.html" import akt_card %}
+{% set _JEDNOLITY_GRUPY = ('Tekst jednolity dla aktu', 'Inf. o tekście jednolitym',
+                          'Nowelizacje po tekście jednolitym', 'Akty wykonawcze') %}
 {% block title %}{{ a.publisher }} {{ a.year }} poz. {{ a.pos }} — {{ site_name }}{% endblock %}
 {% block content %}
 <div class="wrap reading">
@@ -9,6 +12,7 @@
     <header class="doc-head">
       <div class="ident">
         <span class="badge">{{ icon('scales','ic') }} {{ (a.act_type or 'akt prawny')|upper }}</span>
+        {% if jednolity_for %}<span class="badge jednolity">{{ icon('book','ic') }} TEKST JEDNOLITY</span>{% endif %}
         {% if a.in_force == 'IN_FORCE' %}<span class="badge on">{{ icon('check','ic') }} Obowiązuje</span>{% endif %}
       </div>
       <h1>{{ a.title or '(bez tytułu)' }}</h1>
@@ -17,6 +21,33 @@
         {% if a.source_url %}<a class="ghost" href="{{ a.source_url }}" target="_blank" rel="noopener">{{ icon('external','ic') }} Źródło (ELI API)</a>{% endif %}
       </div>
     </header>
+
+    {% if jednolity_for %}
+    <div class="notice notice-good">
+      {{ icon('book', 'ic') }}
+      <p><b>To jest tekst jednolity</b> dla
+        {% for r in jednolity_for %}{% if r.title %}<a class="reflink" href="{{ r.url }}">{{ r.title }}</a>{% else %}aktu {{ r.id }} <span class="muted">(jeszcze niezaimportowanego)</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.
+      </p>
+    </div>
+    {% endif %}
+
+    {% if jednolity_target %}
+    <div class="notice notice-good">
+      {{ icon('book', 'ic') }}
+      <p><b>Dostępny jest tekst jednolity</b> tej ustawy —
+        {% for r in jednolity_target %}{% if r.title %}<a class="reflink" href="{{ r.url }}">przejdź do tekstu jednolitego{% if r.promulgation_date %} (ogłoszony {{ r.promulgation_date|datepl }}){% endif %}</a>{% else %}ogłoszony jako {{ r.id }} <span class="muted">(jeszcze niezaimportowany)</span>{% endif %}{% endfor %}.
+      </p>
+    </div>
+    {% endif %}
+
+    {% if later_amendments %}
+    <div class="notice notice-warn">
+      {{ icon('info', 'ic') }}
+      <p><b>Uwaga:</b> ustawa była zmieniana po ogłoszeniu tego tekstu jednolitego —
+        {% for r in later_amendments %}{% if r.title %}<a class="reflink" href="{{ r.url }}">{{ r.title }}</a>{% else %}{{ r.id }} <span class="muted">(jeszcze niezaimportowany)</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.
+      </p>
+    </div>
+    {% endif %}
 
     <dl class="metryka">
       {% if a.promulgation_date %}<div><dt>{{ icon('calendar','ic') }} Data ogłoszenia</dt><dd>{{ a.promulgation_date|datepl }}</dd></div>{% endif %}
@@ -28,10 +59,24 @@
         {% for k in a.keywords %}<span class="chip">{{ k }}</span>{% endfor %}</dd></div>{% endif %}
     </dl>
 
-    {% if a.act_references %}
+    {% if wykonawcze %}
+    <section class="block">
+      <h2>Rozporządzenia wykonawcze</h2>
+      <div class="cards">
+        {% for r in wykonawcze %}
+          {% if r.title %}{{ akt_card(r) }}{% else %}
+          <p class="muted">{{ r.id }} (jeszcze niezaimportowane)</p>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% set pozostale_grupy = a.act_references.items()|rejectattr('0', 'in', _JEDNOLITY_GRUPY)|list %}
+    {% if pozostale_grupy %}
     <section class="block">
       <h2>Odesłania</h2>
-      {% for grupa, lista in a.act_references.items() %}
+      {% for grupa, lista in pozostale_grupy %}
       <p><b>{{ grupa }}:</b>
         {% for r in lista %}{% if r.id in (existing_refs|default([])) %}<a class="reflink" href="/akt/{{ r.id }}">{{ r.id }}</a>{% else %}{{ r.id }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
       </p>

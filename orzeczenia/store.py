@@ -116,6 +116,8 @@ CREATE TABLE IF NOT EXISTS akty_prawne (
     released_by       TEXT NOT NULL DEFAULT '[]',   -- JSON, lista organów
     keywords          TEXT NOT NULL DEFAULT '[]',   -- JSON
     act_references    TEXT NOT NULL DEFAULT '{}',   -- JSON, jak pole 'references' w API
+    has_jednolity     INTEGER NOT NULL DEFAULT 0,   -- 1 = akt ma opublikowany tekst
+                                                     -- jednolity (jest nim albo dla niego istnieje)
     full_text         TEXT,
     text_source       TEXT,                   -- html | pdf | NULL (jeszcze niedostępny)
     source_url        TEXT NOT NULL,
@@ -269,12 +271,21 @@ class Store:
                                 "search_vector tsvector")
                     cur.execute("CREATE INDEX IF NOT EXISTS ix_akty_search "
                                 "ON akty_prawne USING GIN (search_vector)")
+                    cur.execute("ALTER TABLE akty_prawne ADD COLUMN IF NOT EXISTS "
+                                "has_jednolity INTEGER NOT NULL DEFAULT 0")
+                    cur.execute("CREATE INDEX IF NOT EXISTS ix_akty_jednolity "
+                                "ON akty_prawne (has_jednolity)")
             else:
                 existing = {row[1] for row in
                             self._conn.execute("PRAGMA table_info(orzeczenia)").fetchall()}
                 for col, sqltype in _MIGRATION_COLUMNS:
                     if col not in existing:
                         self._conn.execute(f"ALTER TABLE orzeczenia ADD COLUMN {col} {sqltype}")
+                existing_akty = {row[1] for row in
+                                 self._conn.execute("PRAGMA table_info(akty_prawne)").fetchall()}
+                if "has_jednolity" not in existing_akty:
+                    self._conn.execute(
+                        "ALTER TABLE akty_prawne ADD COLUMN has_jednolity INTEGER NOT NULL DEFAULT 0")
                 self._conn.commit()
 
     # ------------------------------------------------------------------
@@ -808,12 +819,26 @@ class Store:
     AKT_COLUMNS = (
         "publisher", "year", "pos", "eli", "address", "title", "act_type", "status",
         "in_force", "promulgation_date", "announcement_date", "entry_into_force_date",
-        "released_by", "keywords", "act_references", "full_text", "text_source",
-        "source_url", "changed_at",
+        "released_by", "keywords", "act_references", "has_jednolity", "full_text",
+        "text_source", "source_url", "changed_at",
     )
 
-    @staticmethod
-    def _akt_row(d: dict[str, Any]) -> tuple:
+    # Klucze w `act_references` (pole 'references' z ELI API) mówiące, że akt
+    # MA tekst jednolity - albo sam nim jest ("Tekst jednolity dla aktu" -
+    # obwieszczenie wskazujące, dla której ustawy publikuje tekst jednolity),
+    # albo dla niego istnieje ("Inf. o tekście jednolitym" - na oryginalnej
+    # ustawie, wskazuje do przodu na obwieszczenie). Sprawdzone na żywo w
+    # danych z api.sejm.gov.pl.
+    _JEDNOLITY_KEYS = ("Tekst jednolity dla aktu", "Inf. o tekście jednolitym")
+
+    @classmethod
+    def _has_jednolity(cls, act_references: dict[str, Any] | None) -> bool:
+        refs = act_references or {}
+        return any(refs.get(k) for k in cls._JEDNOLITY_KEYS)
+
+    @classmethod
+    def _akt_row(cls, d: dict[str, Any]) -> tuple:
+        act_references = d.get("act_references") or {}
         return (
             d["publisher"], int(d["year"]), int(d["pos"]), d.get("eli"), d.get("address"),
             d.get("title"), d.get("act_type"), d.get("status"), d.get("in_force"),
@@ -821,7 +846,8 @@ class Store:
             _as_iso_date(d.get("entry_into_force_date")),
             json.dumps(d.get("released_by") or [], ensure_ascii=False),
             json.dumps(d.get("keywords") or [], ensure_ascii=False),
-            json.dumps(d.get("act_references") or {}, ensure_ascii=False),
+            json.dumps(act_references, ensure_ascii=False),
+            int(cls._has_jednolity(act_references)),
             d.get("full_text"), d.get("text_source"), d.get("source_url") or "",
             d.get("changed_at"),
         )
@@ -865,6 +891,29 @@ class Store:
         rows = self._rows(
             f"SELECT publisher, year, pos FROM akty_prawne WHERE {where}", params)
         return {f"{r['publisher']}/{r['year']}/{r['pos']}" for r in rows}
+
+    def get_akty_by_ids(self, ids: Iterable[str]) -> dict[str, dict[str, Any]]:
+        """Pełne rekordy (nie tylko fakt istnienia jak `existing_akty`) dla
+        listy identyfikatorów "PUBLISHER/ROK/POZ" - do pokazania powiązanych
+        aktów (rozporządzenia wykonawcze, tekst jednolity, nowelizacje) jako
+        prawdziwych kart zamiast gołych kodów. Zwraca słownik {id: rekord} -
+        identyfikatory, których jeszcze nie zaimportowano, po prostu w nim
+        nie występują (wywołujący sam decyduje, jak pokazać brakujące)."""
+        triples: list[tuple[str, int, int]] = []
+        for i in dict.fromkeys(ids):
+            parts = (i or "").split("/")
+            if len(parts) != 3:
+                continue
+            try:
+                triples.append((parts[0], int(parts[1]), int(parts[2])))
+            except ValueError:
+                continue
+        if not triples:
+            return {}
+        where = " OR ".join(["(publisher = ? AND year = ? AND pos = ?)"] * len(triples))
+        params = [v for t in triples for v in t]
+        rows = self._rows(f"SELECT * FROM akty_prawne WHERE {where}", params)
+        return {f"{r['publisher']}/{r['year']}/{r['pos']}": self._decode_akt(r) for r in rows}
 
     def upsert_akty(self, items: list[dict[str, Any]]) -> int:
         """Jak `upsert_documents` dla orzeczeń - nadpisuje już znane pozycje
@@ -951,8 +1000,9 @@ class Store:
         return [self._decode_akt(r) for r in self._rows(sql, params)]
 
     def search_akty(self, *, phrase: str = "", publisher: str = "", act_type: str = "",
-                    in_force: str = "", date_from: str = "", date_to: str = "",
-                    limit: int = 20, offset: int = 0) -> tuple[list[dict[str, Any]], int]:
+                    in_force: str = "", jednolity: str = "", date_from: str = "",
+                    date_to: str = "", limit: int = 20,
+                    offset: int = 0) -> tuple[list[dict[str, Any]], int]:
         where: list[str] = []
         params: list[Any] = []
         if publisher:
@@ -967,6 +1017,8 @@ class Store:
         elif in_force == "0":
             where.append("in_force != ?")
             params.append("IN_FORCE")
+        if jednolity == "1":
+            where.append("has_jednolity = 1")
         if d := _as_iso_date(date_from):
             where.append("promulgation_date >= ?")
             params.append(d)

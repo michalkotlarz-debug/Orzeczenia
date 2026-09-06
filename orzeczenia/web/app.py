@@ -277,7 +277,7 @@ def new_page(request: Request, source: str = "", date_field: str = "publication"
 @app.get("/akty", response_class=HTMLResponse)
 def akty_page(
     request: Request, q: str = "", publisher: str = "", act_type: str = "",
-    in_force: str = "", date_from: str = "", date_to: str = "",
+    in_force: str = "", jednolity: str = "", date_from: str = "", date_to: str = "",
     page: int = Q(1, ge=1), per_page: int = Q(DEFAULT_PAGE_SIZE),
 ):
     store = get_store()
@@ -287,16 +287,21 @@ def akty_page(
     else:
         rows, total = store.search_akty(
             phrase=q, publisher=publisher, act_type=act_type, in_force=in_force,
-            date_from=date_from, date_to=date_to,
+            jednolity=jednolity, date_from=date_from, date_to=date_to,
             limit=per_page, offset=(page - 1) * per_page)
         counts = store.count_akty()
     params = {k: v for k, v in request.query_params.items() if k != "page" and v}
     return templates.TemplateResponse(request, "akty.html", {
         "q": q, "rows": rows, "total": total, "counts": counts,
         "publisher": publisher, "act_type": act_type, "in_force": in_force,
-        "date_from": date_from, "date_to": date_to, "page": page, "params": params,
+        "jednolity": jednolity, "date_from": date_from, "date_to": date_to,
+        "page": page, "params": params,
         "per_page": per_page, "page_sizes": PAGE_SIZES,
         "blad": _store_error if store is None else ""})
+
+
+def _akt_ref_ids(refs: dict, *keys: str) -> list[str]:
+    return [r.get("id") for k in keys for r in (refs.get(k) or []) if r.get("id")]
 
 
 @app.get("/akt/{publisher}/{year}/{pos}", response_class=HTMLResponse)
@@ -307,23 +312,50 @@ def akt_page(request: Request, publisher: str, year: int, pos: int):
         return templates.TemplateResponse(request, "blad.html", {
             "tytul": "Nie znaleziono aktu",
             "opis": "Tego aktu prawnego nie ma (jeszcze) w naszej bazie."}, status_code=404)
-    ref_ids = [r.get("id") for lista in (akt.get("act_references") or {}).values() for r in lista]
+    refs = akt.get("act_references") or {}
+    ref_ids = [r.get("id") for lista in refs.values() for r in lista]
     existing_refs = store.existing_akty(ref_ids) if ref_ids else set()
-    return templates.TemplateResponse(request, "akt.html",
-                                      {"a": akt, "existing_refs": existing_refs})
+
+    # Powiązania pokazywane osobno, nie tylko w gołej liście "Odesłania" -
+    # patrz uzasadnienie w orzeczenia/store.py:_JEDNOLITY_KEYS. Pobrane
+    # pełne rekordy (nie same id), żeby dało się pokazać tytuł/datę/status
+    # jako prawdziwe karty, nie same kody.
+    related_ids = _akt_ref_ids(
+        refs, "Tekst jednolity dla aktu", "Inf. o tekście jednolitym",
+        "Nowelizacje po tekście jednolitym", "Akty wykonawcze")
+    related = store.get_akty_by_ids(related_ids) if related_ids else {}
+
+    def _lookup(ids: list[str]) -> list[dict]:
+        """Pełny rekord powiązanego aktu, jeśli już go mamy - inaczej sam
+        identyfikator (szablon pokaże go jako zwykły, nieklikalny tekst)."""
+        return [related.get(i) or {"id": i} for i in ids]
+
+    jednolity_target_ids = _akt_ref_ids(refs, "Inf. o tekście jednolitym")
+    context = {
+        "a": akt, "existing_refs": existing_refs,
+        # gdy TEN akt jest obwieszczeniem publikującym tekst jednolity -
+        # dla jakiej ustawy (zwykle jeden, ale API dopuszcza więcej)
+        "jednolity_for": _lookup(_akt_ref_ids(refs, "Tekst jednolity dla aktu")),
+        # gdy TA ustawa ma opublikowany tekst jednolity gdzie indziej -
+        # ostatni wpis to zwykle najświeższy (API zwraca chronologicznie)
+        "jednolity_target": _lookup(jednolity_target_ids[-1:]),
+        "later_amendments": _lookup(_akt_ref_ids(refs, "Nowelizacje po tekście jednolitym")),
+        "wykonawcze": _lookup(_akt_ref_ids(refs, "Akty wykonawcze")),
+    }
+    return templates.TemplateResponse(request, "akt.html", context)
 
 
 @app.get("/api/akty")
 def api_akty(q: str = "", publisher: str = "", act_type: str = "", in_force: str = "",
-            date_from: str = "", date_to: str = "", page: int = Q(1, ge=1),
-            per_page: int = Q(DEFAULT_PAGE_SIZE)):
+            jednolity: str = "", date_from: str = "", date_to: str = "",
+            page: int = Q(1, ge=1), per_page: int = Q(DEFAULT_PAGE_SIZE)):
     store = get_store()
     per_page = _clean_per_page(per_page)
     if store is None:
         return JSONResponse({"error": _store_error}, status_code=503)
     rows, total = store.search_akty(
         phrase=q, publisher=publisher, act_type=act_type, in_force=in_force,
-        date_from=date_from, date_to=date_to,
+        jednolity=jednolity, date_from=date_from, date_to=date_to,
         limit=per_page, offset=(page - 1) * per_page)
     return {"page": page, "per_page": per_page, "total": total, "results": rows}
 

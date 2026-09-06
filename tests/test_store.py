@@ -332,6 +332,52 @@ with tempfile.TemporaryDirectory() as tmp:
     store.close()
 
 # ----------------------------------------------------------------------
+print("\n== has_jednolity / get_akty_by_ids: powiazania miedzy aktami ==")
+with tempfile.TemporaryDirectory() as tmp:
+    store = Store(f"sqlite:///{tmp}/test.sqlite3", keep_days=400)
+    # DU/2020/1 - ustawa, ma opublikowany tekst jednolity gdzie indziej
+    store.upsert_akty([{
+        "publisher": "DU", "year": 2020, "pos": 1, "title": "Ustawa bazowa",
+        "act_type": "Ustawa", "source_url": "http://x",
+        "act_references": {"Inf. o tekście jednolitym": [{"id": "DU/2023/50"}],
+                           "Akty wykonawcze": [{"id": "DU/2021/9"}]},
+    }])
+    # DU/2023/50 - obwieszczenie, JEST tekstem jednolitym dla DU/2020/1
+    store.upsert_akty([{
+        "publisher": "DU", "year": 2023, "pos": 50, "title": "Obwieszczenie - tekst jednolity",
+        "act_type": "Obwieszczenie", "source_url": "http://x",
+        "act_references": {"Tekst jednolity dla aktu": [{"id": "DU/2020/1"}]},
+    }])
+    # DU/2021/9 - rozporzadzenie wykonawcze do DU/2020/1
+    store.upsert_akty([{
+        "publisher": "DU", "year": 2021, "pos": 9, "title": "Rozporządzenie wykonawcze",
+        "act_type": "Rozporządzenie", "source_url": "http://x",
+        "act_references": {"Podstawa prawna": [{"id": "DU/2020/1"}]},
+    }])
+    # DU/2019/1 - zwykla ustawa bez zadnych powiazan
+    store.upsert_akty([{
+        "publisher": "DU", "year": 2019, "pos": 1, "title": "Zwykła ustawa",
+        "act_type": "Ustawa", "source_url": "http://x",
+    }])
+
+    base = store.get_akt("DU", 2020, 1)
+    check("has_jednolity=1 dla ustawy z opublikowanym tekstem jednolitym", base["has_jednolity"], 1)
+    obw = store.get_akt("DU", 2023, 50)
+    check("has_jednolity=1 dla obwieszczenia będącego tekstem jednolitym", obw["has_jednolity"], 1)
+    zwykla = store.get_akt("DU", 2019, 1)
+    check("has_jednolity=0 dla zwykłej ustawy bez powiązań", zwykla["has_jednolity"], 0)
+
+    rows, total = store.search_akty(jednolity="1")
+    check("filtr jednolity=1 zwraca tylko akty z tekstem jednolitym", total, 2)
+
+    related = store.get_akty_by_ids(["DU/2023/50", "DU/2021/9", "DU/9999/1"])
+    check("get_akty_by_ids zwraca pelne rekordy dla znanych id",
+         sorted(related.keys()), ["DU/2021/9", "DU/2023/50"])
+    check("get_akty_by_ids pomija nieznane id bez bledu", "DU/9999/1" in related, False)
+    check("get_akty_by_ids z pusta lista nie crashuje", store.get_akty_by_ids([]), {})
+    store.close()
+
+# ----------------------------------------------------------------------
 print("\n== existing_akty: ktore odeslania juz mamy w bazie (do klikalnych linkow) ==")
 with tempfile.TemporaryDirectory() as tmp:
     store = Store(f"sqlite:///{tmp}/test.sqlite3", keep_days=400)

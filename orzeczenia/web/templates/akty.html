@@ -49,6 +49,10 @@
     <a class="tab {% if in_force == key %}on{% endif %}" href="/akty?{{ params|urlencode_extra('in_force', key) }}">{{ label }}</a>
     {% endfor %}
   </nav>
+  <nav class="tabs">
+    <a class="tab {% if jednolity != '1' %}on{% endif %}" href="/akty?{{ params|urlencode_extra('jednolity', '') }}">Wszystkie</a>
+    <a class="tab {% if jednolity == '1' %}on{% endif %}" href="/akty?{{ params|urlencode_extra('jednolity', '1') }}">{{ icon('book', 'ic') }} Z tekstem jednolitym</a>
+  </nav>
 
   {{ filter_chips(params, [('Typ', 'act_type')]) }}
 
@@ -71,7 +75,7 @@
     {% for a in rows %}{{ akt_card(a) }}{% else %}
     <div class="empty">
       <p><b>Nic tu jeszcze nie ma</b></p>
-      {% if act_type or date_from or date_to %}
+      {% if act_type or date_from or date_to or jednolity == '1' %}
       <p>Żaden zaimportowany akt nie pasuje do wszystkich wybranych filtrów naraz —
          usuń jeden z nich powyżej albo
          <a href="/akty{% if q %}?q={{ q|urlencode }}{% endif %}">wyczyść wszystkie filtry</a>.</p>
