@@ -370,7 +370,11 @@ def akt_page(request: Request, publisher: str, year: int, pos: int):
 def hasla_page(request: Request):
     store = get_store()
     hasla = sorted(store.thematic_counts(), key=lambda h: h["name"].lower()) if store else []
-    return templates.TemplateResponse(request, "hasla.html", {"hasla": hasla})
+    for h in hasla:
+        h["letter"] = h["name"][:1].upper() if h["name"] else "#"
+    available_letters = sorted({h["letter"] for h in hasla})
+    return templates.TemplateResponse(request, "hasla.html", {
+        "hasla": hasla, "available_letters": available_letters})
 
 
 @app.get("/api/akty")

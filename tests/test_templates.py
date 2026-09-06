@@ -161,6 +161,16 @@ try:
     render("ulubione.html", "9-ulubione.html")
     render("blad.html", "10-blad.html", tytul="Nie udało się pobrać orzeczenia",
            opis="serwis chwilowo ogranicza zapytania (pokazał CAPTCHA).")
+
+    h = render("hasla.html", "11-hasla.html",
+               hasla=[{"name": "Alimenty", "count": 12, "letter": "A"},
+                      {"name": "Kara", "count": 5, "letter": "K"}],
+               available_letters=["A", "K"])
+    assert "hasla-search-input" in h, "brak pola wyszukiwania"
+    assert 'data-letter="A"' in h, "brak atrybutu litery na haśle"
+    assert h.count("disabled") >= 20, "litery bez haseł powinny być wyszarzone"
+
+    render("hasla.html", "12-hasla-pusto.html", hasla=[], available_letters=[])
     reg.close()
 except Exception as exc:
     import traceback

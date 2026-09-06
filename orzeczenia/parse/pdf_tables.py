@@ -147,7 +147,16 @@ def pdf_to_text_with_tables(data: bytes) -> str:
     poprzedzony `TABLE_SENTINEL`, żeby `clean_pdf_text()` (patrz tam) mógł go
     rozpoznać i zostawić w spokoju zamiast próbować składać jako zwykły
     akapit, a szablon (`akt.html`) mógł wyrenderować jako HTML, nie zwykły
-    tekst."""
+    tekst.
+
+    UWAGA - `pdfplumber`/`pypdfium2` potrafią zostawiać sporo pamięci między
+    kolejnymi otwarciami dokumentu w tym samym, długo działającym procesie
+    (import wsadowy przechodzi przez setki/tysiące PDF-ów pod rząd) - bez
+    jawnego `flush_cache()` per strona i `gc.collect()` po każdym dokumencie
+    proces urósł na żywo do ~3 GB i padł zabity przez OOM (sprawdzone na
+    produkcji przy migracji ~6800 aktów). Oba wywołania są tanie i nie
+    zmieniają wyniku - tylko szybciej oddają pamięć."""
+    import gc
     import pdfplumber
     from io import BytesIO
 
@@ -159,4 +168,6 @@ def pdf_to_text_with_tables(data: bytes) -> str:
                     out.append(payload)
                 else:
                     out.append(TABLE_SENTINEL + table_to_html(payload))
+            page.flush_cache()
+    gc.collect()
     return "\n\n".join(out)

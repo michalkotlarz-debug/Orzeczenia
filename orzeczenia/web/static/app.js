@@ -202,6 +202,48 @@
     }
   });
 
+  /* Indeks haseł (/hasla) - filtrowanie w przeglądarce, bez przeładowania:
+     wpisana fraza I wybrana litera działają razem (hasło musi pasować do
+     obu naraz). Dane są już w DOM-ie (cała lista renderowana od razu), więc
+     to zwykłe pokazywanie/ukrywanie, nie osobne zapytanie do serwera. */
+  var haslaList = document.getElementById("hasla-list");
+  if (haslaList) {
+    var haslaSearch = document.getElementById("hasla-search-input");
+    var haslaNav = document.getElementById("hasla-letter-nav");
+    var haslaEmpty = document.getElementById("hasla-empty");
+    var items = Array.prototype.slice.call(haslaList.querySelectorAll(".hasla-item"));
+    var activeLetter = "";
+
+    function applyHaslaFilter() {
+      var query = (haslaSearch.value || "").trim().toLowerCase();
+      var visible = 0;
+      items.forEach(function (item) {
+        var matchesLetter = !activeLetter || item.getAttribute("data-letter") === activeLetter;
+        var matchesQuery = !query || item.getAttribute("data-name").indexOf(query) !== -1;
+        var show = matchesLetter && matchesQuery;
+        item.hidden = !show;
+        if (show) visible++;
+      });
+      if (haslaEmpty) haslaEmpty.hidden = visible !== 0;
+    }
+
+    if (haslaSearch) {
+      haslaSearch.addEventListener("input", applyHaslaFilter);
+    }
+    if (haslaNav) {
+      haslaNav.querySelectorAll(".letter").forEach(function (btn) {
+        if (btn.disabled) return;
+        btn.addEventListener("click", function () {
+          activeLetter = btn.getAttribute("data-letter");
+          haslaNav.querySelectorAll(".letter").forEach(function (b) {
+            b.classList.toggle("on", b === btn);
+          });
+          applyHaslaFilter();
+        });
+      });
+    }
+  }
+
   render();
   bind();
   refreshCount();

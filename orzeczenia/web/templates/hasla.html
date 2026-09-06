@@ -10,13 +10,32 @@
 
 <section class="wrap">
   {% if hasla %}
-  <div class="hasla-index">
+  <div class="hasla-search">
+    {{ icon('search', 'ic lead') }}
+    <input type="search" id="hasla-search-input" placeholder="Szukaj hasła…" autocomplete="off">
+  </div>
+
+  <nav class="letter-nav" id="hasla-letter-nav">
+    <button type="button" class="letter on" data-letter="">Wszystkie</button>
+    {% for L in ('A','Ą','B','C','Ć','D','E','Ę','F','G','H','I','J','K','L','Ł','M','N',
+                'Ń','O','Ó','P','Q','R','S','Ś','T','U','V','W','X','Y','Z','Ź','Ż') %}
+    <button type="button" class="letter{% if L not in available_letters %} off{% endif %}"
+            data-letter="{{ L }}"{% if L not in available_letters %} disabled{% endif %}>{{ L }}</button>
+    {% endfor %}
+  </nav>
+
+  <div class="hasla-index" id="hasla-list">
     {% for h in hasla %}
-    <a class="hasla-item" href="/szukaj?thematic={{ h.name|urlencode }}">
+    <a class="hasla-item" href="/szukaj?thematic={{ h.name|urlencode }}"
+       data-letter="{{ h.letter }}" data-name="{{ h.name|lower }}">
       <span>{{ h.name }}</span>
       <b>{{ "{:,}".format(h.count).replace(",", " ") }}</b>
     </a>
     {% endfor %}
+  </div>
+  <div class="empty" id="hasla-empty" hidden>
+    <p><b>Nic nie pasuje</b></p>
+    <p>Spróbuj innej litery albo wyczyść wyszukiwanie.</p>
   </div>
   {% else %}
   <div class="empty">
