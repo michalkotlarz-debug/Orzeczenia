@@ -385,6 +385,10 @@ def akt_page(request: Request, publisher: str, year: int, pos: int):
 
 
 _HASLA_LETTERY_WYLACZONE = {"Y", "V", "Ą", "Ę", "Ó", "Q", "X"}
+# Kolejność polskiego alfabetu - zwykłe sortowanie tekstu (po punkcie
+# kodowym Unicode) wrzuca Ł/Ś/Ź/Ż itd. na sam koniec, za Z, zamiast na ich
+# właściwe miejsce (Ł między L i M, Ś między S i T...).
+_POLSKI_ALFABET = list("AĄBCĆDEĘFGHIJKLŁMNŃOÓPQRSŚTUVWXYZŹŻ")
 
 
 @app.get("/hasla", response_class=HTMLResponse)
@@ -392,15 +396,22 @@ def hasla_page(request: Request):
     store = get_store()
     hasla = sorted(store.thematic_counts(), key=lambda h: h["name"].lower()) if store else []
     for h in hasla:
-        h["letter"] = h["name"][:1].upper() if h["name"] else "#"
+        # Pierwsza LITERA w nazwie, nie pierwszy znak - część haseł ma na
+        # początku cudzysłów albo inny znak interpunkcyjny (np. dosłowne
+        # `"Ustawa Lutowa"` w bazie) i bez tego trafiały pod osobny,
+        # bezsensowny przycisk `"` zamiast pod swoją prawdziwą literę.
+        h["letter"] = next((c.upper() for c in h["name"] if c.isalpha()), "#")
     # Kilka liter nie ma sensu jako osobne przyciski nawigacji (obce w
     # polskim alfabecie na początku wyrazu albo prawie nigdy nie występujące
     # jako pierwsza litera hasła) - na wyraźne życzenie usunięte z paska
     # całkowicie, nie tylko wyszarzone. Hasło zaczynające się taką literą
     # (jeśli w ogóle istnieje) nadal jest widoczne w "Wszystkie" i przez
     # wyszukiwanie - znika tylko dedykowany przycisk litery.
-    available_letters = sorted(
-        {h["letter"] for h in hasla} - _HASLA_LETTERY_WYLACZONE)
+    present = {h["letter"] for h in hasla} - _HASLA_LETTERY_WYLACZONE
+    available_letters = [L for L in _POLSKI_ALFABET if L in present]
+    # Litera spoza alfabetu (np. "#" dla hasła bez żadnej litery) ląduje na
+    # końcu, żeby jej istnienie nie zgubiło się po cichu.
+    available_letters += sorted(present - set(_POLSKI_ALFABET))
     return templates.TemplateResponse(request, "hasla.html", {
         "hasla": hasla, "available_letters": available_letters})
 

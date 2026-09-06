@@ -202,20 +202,31 @@
     }
   });
 
-  /* Indeks haseł (/hasla) - filtrowanie w przeglądarce, bez przeładowania:
-     wpisana fraza I wybrana litera działają razem (hasło musi pasować do
-     obu naraz). Dane są już w DOM-ie (cała lista renderowana od razu), więc
-     to zwykłe pokazywanie/ukrywanie, nie osobne zapytanie do serwera. */
+  /* Indeks haseł (/hasla) - filtrowanie w przeglądarce, bez przeładowania.
+     Pole wyszukiwania i pasek liter to DWA OSOBNE filtry, nie połączone -
+     wpisanie czegoś w pole czyści wybraną literę (żeby szukanie hasła spoza
+     tej litery nie dawało fałszywie pustego wyniku), a kliknięcie litery
+     czyści pole wyszukiwania (żeby pod literą pokazało się naprawdę
+     wszystko, nie tylko to, co jeszcze pasuje do wpisanej wcześniej frazy).
+     Dane są już w DOM-ie (cała lista renderowana od razu), więc to zwykłe
+     pokazywanie/ukrywanie, nie osobne zapytanie do serwera. */
   var haslaList = document.getElementById("hasla-list");
   if (haslaList) {
     var haslaSearch = document.getElementById("hasla-search-input");
     var haslaNav = document.getElementById("hasla-letter-nav");
     var haslaEmpty = document.getElementById("hasla-empty");
     var items = Array.prototype.slice.call(haslaList.querySelectorAll(".hasla-item"));
-    var activeLetter = "";
+
+    function setActiveLetter(letter) {
+      haslaNav.querySelectorAll(".letter").forEach(function (b) {
+        b.classList.toggle("on", b.getAttribute("data-letter") === letter);
+      });
+    }
 
     function applyHaslaFilter() {
       var query = (haslaSearch.value || "").trim().toLowerCase();
+      var activeBtn = haslaNav.querySelector(".letter.on");
+      var activeLetter = activeBtn ? activeBtn.getAttribute("data-letter") : "";
       var visible = 0;
       items.forEach(function (item) {
         var matchesLetter = !activeLetter || item.getAttribute("data-letter") === activeLetter;
@@ -228,15 +239,16 @@
     }
 
     if (haslaSearch) {
-      haslaSearch.addEventListener("input", applyHaslaFilter);
+      haslaSearch.addEventListener("input", function () {
+        if (haslaSearch.value.trim()) setActiveLetter("");
+        applyHaslaFilter();
+      });
     }
     if (haslaNav) {
       haslaNav.querySelectorAll(".letter").forEach(function (btn) {
         btn.addEventListener("click", function () {
-          activeLetter = btn.getAttribute("data-letter");
-          haslaNav.querySelectorAll(".letter").forEach(function (b) {
-            b.classList.toggle("on", b === btn);
-          });
+          setActiveLetter(btn.getAttribute("data-letter"));
+          haslaSearch.value = "";
           applyHaslaFilter();
         });
       });
