@@ -416,9 +416,11 @@ def court_level(court: str | None) -> str | None:
 # liternictwa z dodatkowym rozstawem, którego pdfminer nie odróżnia od
 # spacji między słowami).
 _PDF_DEHYPHEN_RE = re.compile(r"(\w)-\s*\n+\s*([a-ząćęłńóśźż])")
-_PDF_HEADER_WORDS = {
+_PDF_ACT_TYPE_WORDS = {
     "USTAWA", "ROZPORZĄDZENIE", "OBWIESZCZENIE", "UCHWAŁA", "POSTANOWIENIE",
     "ZARZĄDZENIE", "KOMUNIKAT", "DECYZJA", "PROTOKÓŁ", "OGŁOSZENIE",
+}
+_PDF_HEADER_WORDS = _PDF_ACT_TYPE_WORDS | {
     "OŚWIADCZENIERZĄDOWE", "UMOWAMIĘDZYNARODOWA", "DZIENNIKUSTAW",
     "RZECZYPOSPOLITEJPOLSKIEJ", "MONITORPOLSKI",
 }
@@ -533,9 +535,21 @@ def clean_pdf_text(text: str | None, act_type: str | None = None) -> str | None:
     czytelne akapity - patrz uzasadnienie wyżej. Akapity łączy pojedynczym
     `\\n`, tak samo jak `html_text()` niżej - dzięki temu `akt.html`
     (`full_text.split("\\n")`) renderuje jednym i tym samym kodem teksty
-    z obu źródeł, bez specjalnego przypadku dla PDF-a. Bezpieczne do
-    uruchomienia wielokrotnie (idempotentne) i do zastosowania wstecz na już
-    zapisanym tekście, nie tylko przy świeżym imporcie."""
+    z obu źródeł, bez specjalnego przypadku dla PDF-a.
+
+    UWAGA - NIE wywoływać tej funkcji na WŁASNYM wyjściu wielo-akapitowego
+    dokumentu (np. przy migracji odświeżającej już zapisany `full_text`)!
+    Funkcja rozpoznaje akapity po PODWÓJNYM znaku nowej linii (tak wygląda
+    surowe wyjście pdfminer) - jej własny wynik ma jednak akapity rozdzielone
+    POJEDYNCZYM `\\n`, więc ponowne przepuszczenie całego, już oczyszczonego
+    dokumentu potraktuje go jako JEDEN blok i zamieni WSZYSTKIE granice
+    akapitów na spacje, bezpowrotnie spłaszczając tekst do jednej linii
+    (sprawdzone na żywo - realny incydent w tej sesji, naprawiony pełnym
+    ponownym pobraniem PDF-ów ze źródła). Bezpieczna, idempotentna migracja
+    retroaktywna dla PDF-a wymaga więc ZAWSZE świeżego `pdf_to_text()` z
+    oryginalnych bajtów - nie da się jej zrobić na samym zapisanym tekście,
+    inaczej niż dla `clean_akt_html_text()` niżej (ta NIE ma tego problemu,
+    bo pracuje linia po linii, nie na całym tekście jako jednym blokiem)."""
     if not text:
         return text
     text = _PDF_DEHYPHEN_RE.sub(r"\1\2", text)
@@ -573,6 +587,16 @@ def clean_pdf_text(text: str | None, act_type: str | None = None) -> str | None:
                 # pokazana w metryce aktu (Organ wydający), więc resztę
                 # pomijamy zamiast zostawiać rozjechaną.
                 block = act_type_squashed
+            elif nested := next((w for w in _PDF_ACT_TYPE_WORDS if squashed.startswith(w)), None):
+                # Zagnieżdżony nagłówek INNEGO typu aktu niż dokument
+                # nadrzędny - typowe dla obwieszczeń publikujących tekst
+                # jednolity rozporządzenia (np. "ROZPORZĄDZENIE MINISTRA
+                # ZDROWIA..." rozstrzelone wewnątrz "OBWIESZCZENIE..."):
+                # sprawdzone na żywo (DU 2026/1170). Sam typ zagnieżdżonego
+                # aktu da się odtworzyć tak samo jak dla dokumentu głównego,
+                # z tych samych powodów (organ wydający i tak nie do
+                # zrekonstruowania bez słownika w dopełniaczu).
+                block = nested
             else:
                 # Rozstrzelony nagłówek bez rozpoznanego typu aktu na
                 # początku - nie da się bezpiecznie zrekonstruować, lepiej

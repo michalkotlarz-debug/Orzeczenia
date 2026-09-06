@@ -317,7 +317,9 @@ check("normalny naglowek z dlugimi wyrazami nie jest tykany",
      clean_pdf_text("SEJM RZECZYPOSPOLITEJ POLSKIEJ UCHWALIŁ CO NASTĘPUJE"),
      "SEJM RZECZYPOSPOLITEJ POLSKIEJ UCHWALIŁ CO NASTĘPUJE")
 check("puste wejście nie crashuje", clean_pdf_text(None), None)
-check("idempotentne - drugie przejście nic już nie zmienia",
+check("idempotentne DLA POJEDYNCZEGO AKAPITU - drugie przejście nic już nie zmienia "
+     "(UWAGA: to NIE obowiązuje dla wielo-akapitowego tekstu - patrz ostrzeżenie w "
+     "docstringu clean_pdf_text, migracja retroaktywna MUSI zaczynać od surowego pdfminer)",
      clean_pdf_text(clean_pdf_text("nastę-\n\npujące  słowo", act_type="Ustawa")),
      clean_pdf_text("nastę-\n\npujące  słowo", act_type="Ustawa"))
 check("przypis 'minister kieruje działem administracji rządowej' (PDF) -> usunięty",
@@ -325,6 +327,10 @@ check("przypis 'minister kieruje działem administracji rządowej' (PDF) -> usun
                     "rządowej, na podstawie § 1 ust. 2 rozporządzenia Prezesa Rady Ministrów "
                     "(Dz. U. poz. 943).\n\nArt. 2. Dalej."),
      "Art. 1. Coś tam.\nArt. 2. Dalej.")
+check("zagnieżdżony rozstrzelony nagłówek innego typu aktu -> odtworzony jako jego własny typ",
+     clean_pdf_text("OBWIESZCZENIE\n\nRO ZPO RZ ĄD Z E N I E\n\nM INI S TR A ZD RO WI A 1)\n\n"
+                    "z dnia 20 maja 2024 r.", act_type="Obwieszczenie"),
+     "OBWIESZCZENIE\nROZPORZĄDZENIE\nz dnia 20 maja 2024 r.")
 check("tabela dwukolumnowa czytana kolumnami (etykiety, potem wartości) -> sparowana w wiersze",
      clean_pdf_text("Kategoria zaszeregowania\n\nI\n\nII\n\nIII\n\nKwota w zł\n\n"
                     "4806–7470\n\n4816–7510\n\n4826–7630\n\nArt. 1. Dalej."),
