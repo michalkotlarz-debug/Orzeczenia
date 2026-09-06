@@ -22,9 +22,11 @@
       <span class="name">{{ site_name }}</span>
     </a>
     <nav>
-      <a class="fav-link" href="/akty" aria-label="Akty prawne">{{ icon('scales', 'ic') }} <span class="lbl">Akty prawne</span></a>
-      <a class="fav-link" href="/hasla" aria-label="Indeks haseł">{{ icon('tag', 'ic') }} <span class="lbl">Indeks haseł</span></a>
-      <a class="fav-link" href="/ulubione" aria-label="Ulubione">{{ icon('heart', 'ic') }} <span class="lbl">Ulubione</span>
+      <a class="fav-link {% if request.url.path == '/' %}on{% endif %}" href="/" aria-label="Strona główna">{{ icon('home', 'ic') }} <span class="lbl">Strona główna</span></a>
+      <a class="fav-link {% if request.url.path == '/szukaj' %}on{% endif %}" href="/szukaj" aria-label="Orzeczenia">{{ icon('gavel', 'ic') }} <span class="lbl">Orzeczenia</span></a>
+      <a class="fav-link {% if request.url.path.startswith('/akty') or request.url.path.startswith('/akt/') %}on{% endif %}" href="/akty" aria-label="Akty prawne">{{ icon('scales', 'ic') }} <span class="lbl">Akty prawne</span></a>
+      <a class="fav-link {% if request.url.path == '/hasla' %}on{% endif %}" href="/hasla" aria-label="Indeks haseł">{{ icon('tag', 'ic') }} <span class="lbl">Indeks haseł</span></a>
+      <a class="fav-link {% if request.url.path == '/ulubione' %}on{% endif %}" href="/ulubione" aria-label="Ulubione">{{ icon('heart', 'ic') }} <span class="lbl">Ulubione</span>
         <span class="count" data-fav-count hidden>0</span></a>
       {% block nav_extra %}{% endblock %}
       <button class="theme-toggle" type="button" data-theme-toggle title="Przełącz jasny/ciemny motyw" aria-label="Przełącz jasny/ciemny motyw">

@@ -54,6 +54,7 @@ env.filters["urlencode_remove"] = lambda p, *ks: _qs(p, **{k: "" for k in ks}, p
 class R:
     class url:
         query = "q=wadium"
+        path = "/szukaj"
     query_params = {"q": "wadium"}
 
 
