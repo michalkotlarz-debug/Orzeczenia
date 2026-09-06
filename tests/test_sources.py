@@ -13,7 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from orzeczenia.config import CacheConfig, Config, SourceConfig      # noqa: E402
 from orzeczenia.format import date_pl, plural_pl                     # noqa: E402
 from orzeczenia.http import SourceUnavailable, TTLCache, looks_blocked  # noqa: E402
-from orzeczenia.parse.common import (clean_pdf_text, detect_doc_type,  # noqa: E402
+from orzeczenia.parse.common import (clean_akt_html_text, clean_pdf_text,  # noqa: E402
+                                     detect_doc_type,  # noqa: E402
                                      detect_doc_types, extract_panel, normalize_signature,
                                      parse_date, split_sentencja_uzasadnienie)
 from orzeczenia.sources.base import Query                            # noqa: E402
@@ -319,6 +320,41 @@ check("puste wejście nie crashuje", clean_pdf_text(None), None)
 check("idempotentne - drugie przejście nic już nie zmienia",
      clean_pdf_text(clean_pdf_text("nastę-\n\npujące  słowo", act_type="Ustawa")),
      clean_pdf_text("nastę-\n\npujące  słowo", act_type="Ustawa"))
+check("przypis 'minister kieruje działem administracji rządowej' (PDF) -> usunięty",
+     clean_pdf_text("Art. 1. Coś tam.\n\n1)  Minister Zdrowia kieruje działem administracji "
+                    "rządowej, na podstawie § 1 ust. 2 rozporządzenia Prezesa Rady Ministrów "
+                    "(Dz. U. poz. 943).\n\nArt. 2. Dalej."),
+     "Art. 1. Coś tam.\nArt. 2. Dalej.")
+check("tabela dwukolumnowa czytana kolumnami (etykiety, potem wartości) -> sparowana w wiersze",
+     clean_pdf_text("Kategoria zaszeregowania\n\nI\n\nII\n\nIII\n\nKwota w zł\n\n"
+                    "4806–7470\n\n4816–7510\n\n4826–7630\n\nArt. 1. Dalej."),
+     "Kategoria zaszeregowania\nKwota w zł\nI – 4806–7470\nII – 4816–7510\n"
+     "III – 4826–7630\nArt. 1. Dalej.")
+
+print("\n== clean_akt_html_text: naprawa tekstu aktow pobranych sciezka HTML z ELI API ==")
+check("brakująca spacja przed 'z dnia' -> dodana",
+     clean_akt_html_text("Rozporządzenie Ministra Finansówz dnia 12 listopada 2024 r.uchylające "
+                         "rozporządzenie."),
+     "Rozporządzenie Ministra Finansów z dnia 12 listopada 2024 r. uchylające "
+     "rozporządzenie.")
+check("przypis 'minister kieruje działem' sklejony z tytułem oraz powtórzony na końcu -> usunięty wszędzie",
+     clean_akt_html_text(
+         "Rozporządzenie Ministra Finansów z dnia 12 listopada 2024 r. uchylające rozporządzenie "
+         "w sprawie wyższej wagi ryzyka dla ekspozycji zabezpieczonych hipotekami na "
+         "nieruchomościach 1)Minister Finansów kieruje działem administracji rządowej - "
+         "instytucje finansowe, na podstawie § 1 ust. 2 pkt 3 rozporządzenia Prezesa Rady "
+         "Ministrów z dnia 18 grudnia 2023 r. w sprawie szczegółowego zakresu działania "
+         "Ministra Finansów (Dz. U. poz. 2710).\nNa podstawie art. 1.\n"
+         "1) Minister Finansów kieruje działem administracji rządowej - instytucje finansowe, "
+         "na podstawie § 1 ust. 2 pkt 3 rozporządzenia Prezesa Rady Ministrów z dnia 18 grudnia "
+         "2023 r. w sprawie szczegółowego zakresu działania Ministra Finansów (Dz. U. poz. 2710)."),
+     "Rozporządzenie Ministra Finansów z dnia 12 listopada 2024 r. uchylające rozporządzenie "
+     "w sprawie wyższej wagi ryzyka dla ekspozycji zabezpieczonych hipotekami na "
+     "nieruchomościach\nNa podstawie art. 1.")
+check("puste wejście nie crashuje (html)", clean_akt_html_text(None), None)
+check("idempotentne (html) - drugie przejście nic już nie zmienia",
+     clean_akt_html_text(clean_akt_html_text("Ministra Finansówz dnia 1 maja 2024 r.")),
+     clean_akt_html_text("Ministra Finansówz dnia 1 maja 2024 r."))
 
 reg.close()
 print("\n" + "=" * 62)

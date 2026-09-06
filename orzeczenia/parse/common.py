@@ -32,6 +32,14 @@ def strip_accents(text: str) -> str:
                    if unicodedata.category(c) != "Mn")
 
 
+# Przypis "N) Minister X kieruje działem administracji rządowej ..." (kto
+# jest właściwym ministrem dla danego aktu) - zbędny dla czytelnika, sprawdzony
+# na żywo zarówno w PDF-ie (DU 2026/1170) jak i po stronie HTML (DU 2024/1723,
+# DU 2024/770) - patrz `_PDF_FOOTNOTE_RE2` i `_AKT_KIERUJE_DZIALEM_RE` niżej.
+_KIERUJE_DZIALEM_CORE = (
+    r"Ministe?r\w*\s+\S+(?:\s+\S+){0,3}\s+kieruje\s+działem\s+administracji\s+rządowej")
+
+
 # ----------------------------------------------------------------------
 # HTML -> tekst z zachowaniem podziału na bloki
 # ----------------------------------------------------------------------
@@ -63,6 +71,41 @@ def html_text(node) -> str:
     raw = (raw.replace("\xa0", " ").replace("​", "")
               .replace("‑", "-").replace("\n", " ").replace("\r", " "))
     lines = [re.sub(r"[ \t]+", " ", ln).strip() for ln in raw.split(SEP)]
+    return "\n".join(ln for ln in lines if ln).strip()
+
+
+# ----------------------------------------------------------------------
+# Akty prawne z ELI API pobrane ścieżką HTML (patrz `EliClient.text()` w
+# `orzeczenia/sources/sejm_eli.py`) mają dwa własne, potwierdzone na żywo
+# problemy (DU 2024/1723, DU 2024/770), których `html_text()` wyżej (funkcja
+# WSPÓLNA też z orzeczeniami sądowymi) nie rozwiązuje:
+# 1. Brakujące spacje na granicy elementów źródłowego znacznika HTML (np.
+#    "Ministra Finansówz dnia 12 listopada 2024 r.uchylające...").
+# 2. Przypis o organie kierującym danym działem administracji rządowej
+#    (patrz `_KIERUJE_DZIALEM_CORE` wyżej) pojawia się PODWÓJNIE - raz
+#    sklejony wprost z tytułem (bez sensu dla czytelnika), raz poprawnie jako
+#    właściwy przypis na końcu - obie kopie są zbędne.
+_AKT_MISSING_SPACE_RES = [
+    (re.compile(r"(?<=[a-ząćęłńóśźż])(?=z dnia \d)"), " "),
+    (re.compile(r"(?<=\d{4} r)\.(?=[a-ząćęłńóśźż])"), ". "),
+    (re.compile(r"(?<=\d{4}r)\.(?=[a-ząćęłńóśźż])"), ". "),
+]
+_AKT_KIERUJE_DZIALEM_RE = re.compile(
+    rf"\s*\d+\)\s*{_KIERUJE_DZIALEM_CORE}[^\n]*?\(Dz\.\s*U\.[^)\n]*\)\.?",
+    re.IGNORECASE)
+
+
+def clean_akt_html_text(text: str | None) -> str | None:
+    """Odpowiednik `clean_pdf_text()` dla aktów pobranych ścieżką HTML -
+    patrz uzasadnienie wyżej. Bezpieczne do uruchomienia wielokrotnie i
+    wstecz na już zapisanym tekście."""
+    if not text:
+        return text
+    text = _AKT_KIERUJE_DZIALEM_RE.sub("", text)
+    for rx, repl in _AKT_MISSING_SPACE_RES:
+        text = rx.sub(repl, text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    lines = [ln.strip() for ln in text.split("\n")]
     return "\n".join(ln for ln in lines if ln).strip()
 
 
@@ -430,6 +473,59 @@ _PDF_LONE_MARKER_RE = re.compile(r"^„?(?:\d+[a-ząćęłńóśźż]?|[a-ząć�
 # użytkownika (DU 2025 poz. 1882).
 _PDF_FOOTNOTE_RE = re.compile(
     r"^\d+\)\s*zmian[ya]\s+tekstu\s+jednolitego\b.*\bogłoszon", re.IGNORECASE | re.DOTALL)
+# Drugi, odrębny wzorzec przypisu - "N) Minister X kieruje działem
+# administracji rządowej ..." (kto jest właściwym ministrem dla danego aktu) -
+# tak samo zbędny dla czytelnika jak przypis o tekście jednolitym wyżej.
+# Sprawdzone na żywo w PDF-ie DU 2026/1170 ("Minister Zdrowia kieruje
+# działem...") - `_KIERUJE_DZIALEM_CORE` zdefiniowany wyżej (współdzielony
+# z `_AKT_KIERUJE_DZIALEM_RE` dla ścieżki HTML).
+_PDF_FOOTNOTE_RE2 = re.compile(rf"^\d+\)\s*{_KIERUJE_DZIALEM_CORE}\b", re.IGNORECASE)
+
+
+# Dwukolumnowe tabele (typowo: "Kategoria zaszeregowania" / "Kwota w zł" w
+# załącznikach płacowych) pdfminer potrafi wyciągnąć KOLUMNAMI zamiast
+# WIERSZAMI - cała lewa kolumna (same krótkie etykiety: rzymskie numery albo
+# liczby porządkowe) trafia jako seria osobnych "akapitów", dopiero PO NIEJ
+# cała prawa kolumna (same wartości: kwoty / przedziały kwot) jako kolejna
+# taka seria. Sprawdzone na żywo (DU 2026/1170, tabela stawek wynagrodzenia
+# zasadniczego: "I", "II", ..., "XX", potem "4806–7470", "4816–7510", ...).
+_TABLE_LABEL_RE = re.compile(r"^[IVXLCDM]{1,6}$|^\d{1,3}[a-ząćęłńóśźż]?$")
+_TABLE_VALUE_RE = re.compile(r"^\d[\d\s]*(?:[–-]\s?\d[\d\s]*)?\s?(?:zł)?$")
+
+
+def _rejoin_columnar_tables(blocks: list[str]) -> list[str]:
+    """Wykrywa dwie sąsiadujące serie bloków tej samej długości (etykiety,
+    potem - z ewentualnym nagłówkiem kolumny pomiędzy - wartości) i składa je
+    z powrotem w wiersze "etykieta – wartość", zamiast zostawiać dwie osobne
+    listy bez żadnego wizualnego powiązania."""
+    out: list[str] = []
+    i, n = 0, len(blocks)
+    while i < n:
+        j = i
+        while j < n and _TABLE_LABEL_RE.match(blocks[j]):
+            j += 1
+        label_count = j - i
+        if label_count >= 3:
+            k = j
+            header = None
+            if (k < n and not _TABLE_LABEL_RE.match(blocks[k])
+                    and not _TABLE_VALUE_RE.match(blocks[k])
+                    and len(blocks[k].split()) <= 6):
+                header = blocks[k]
+                k += 1
+            start = k
+            while k < n and _TABLE_VALUE_RE.match(blocks[k]):
+                k += 1
+            if k - start == label_count:
+                if header:
+                    out.append(header)
+                for idx in range(label_count):
+                    out.append(f"{blocks[i + idx]} – {blocks[start + idx]}")
+                i = k
+                continue
+        out.append(blocks[i])
+        i += 1
+    return out
 
 
 def clean_pdf_text(text: str | None, act_type: str | None = None) -> str | None:
@@ -461,7 +557,7 @@ def clean_pdf_text(text: str | None, act_type: str | None = None) -> str | None:
         block = re.sub(r" {2,}", " ", block).strip()
         if not block:
             continue
-        if _PDF_FOOTNOTE_RE.match(block):
+        if _PDF_FOOTNOTE_RE.match(block) or _PDF_FOOTNOTE_RE2.match(block):
             continue
         squashed = block.replace(" ", "")
         if squashed.isupper() and (squashed in _PDF_HEADER_WORDS or
@@ -483,6 +579,7 @@ def clean_pdf_text(text: str | None, act_type: str | None = None) -> str | None:
                 # pominąć niż pokazać rozjechany na stronie.
                 continue
         blocks.append(block)
+    blocks = _rejoin_columnar_tables(blocks)
     # Samotny numer/litera punktu bez treści (np. "2)" jako cały "akapit",
     # bo w PDF-ie wypadł na końcu strony) - sklej z następnym akapitem.
     # Zdarza się też PO KILKA takich markerów pod rząd (np. "1)", "2)" jako
