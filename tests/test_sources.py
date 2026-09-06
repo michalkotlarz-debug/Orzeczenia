@@ -357,6 +357,35 @@ check("przypis 'minister kieruje działem' sklejony z tytułem oraz powtórzony 
      "Rozporządzenie Ministra Finansów z dnia 12 listopada 2024 r. uchylające rozporządzenie "
      "w sprawie wyższej wagi ryzyka dla ekspozycji zabezpieczonych hipotekami na "
      "nieruchomościach\nNa podstawie art. 1.")
+check("przypis o wdrażaniu prawa UE sklejony z nagłówkiem sekcji oraz powtórzony na końcu -> usunięty wszędzie, "
+     "etykiety nawigacyjne strony ELI ('Treść rozporządzenia' itp.) tez usunięte",
+     clean_akt_html_text(
+         "Rozporządzenie Ministra Finansów z dnia 12 listopada 2024 r. uchylające rozporządzenie "
+         "w sprawie wyższej wagi ryzyka dla ekspozycji zabezpieczonych hipotekami na nieruchomościach\n"
+         "Treść rozporządzenia\n"
+         "2)Niniejsze rozporządzenie służy stosowaniu rozporządzenia Parlamentu Europejskiego i Rady "
+         "(UE) nr 575/2013 z dnia 26 czerwca 2013 r. w sprawie wymogów ostrożnościowych dla instytucji "
+         "kredytowych oraz zmieniającego rozporządzenie (UE) nr 648/2012 (Dz. Urz. UE L 176 z "
+         "27.06.2013, str. 1, oraz Dz. Urz. UE L 2024/1623 z 19.06.2024).\n"
+         "Na podstawie art. 128 ust. 6a pkt 2 ustawy z dnia 29 sierpnia 1997 r. - Prawo bankowe "
+         "(Dz. U. z 2024 r. poz. 1646 i 1685) zarządza się, co następuje:\n"
+         "§ 2.\n"
+         "Rozporządzenie wchodzi w życie z dniem 1 stycznia 2025 r.\n"
+         "2)\n"
+         "Niniejsze rozporządzenie służy stosowaniu rozporządzenia Parlamentu Europejskiego i Rady "
+         "(UE) nr 575/2013 z dnia 26 czerwca 2013 r. w sprawie wymogów ostrożnościowych dla instytucji "
+         "kredytowych oraz zmieniającego rozporządzenie (UE) nr 648/2012 (Dz. Urz. UE L 176 z "
+         "27.06.2013, str. 1, oraz Dz. Urz. UE L 2024/1623 z 19.06.2024)."),
+     "Rozporządzenie Ministra Finansów z dnia 12 listopada 2024 r. uchylające rozporządzenie "
+     "w sprawie wyższej wagi ryzyka dla ekspozycji zabezpieczonych hipotekami na nieruchomościach\n"
+     "Na podstawie art. 128 ust. 6a pkt 2 ustawy z dnia 29 sierpnia 1997 r. - Prawo bankowe "
+     "(Dz. U. z 2024 r. poz. 1646 i 1685) zarządza się, co następuje:\n"
+     "§ 2.\n"
+     "Rozporządzenie wchodzi w życie z dniem 1 stycznia 2025 r.")
+check("etykiety Spis treści / Pokaż całość -> usunięte",
+     clean_akt_html_text("Tytuł aktu\nSpis treści\nTreść obwieszczenia\nTreść obwieszczenia\n"
+                         "Prawdziwa treść.\nPokaż całość"),
+     "Tytuł aktu\nPrawdziwa treść.")
 check("puste wejście nie crashuje (html)", clean_akt_html_text(None), None)
 check("idempotentne (html) - drugie przejście nic już nie zmienia",
      clean_akt_html_text(clean_akt_html_text("Ministra Finansówz dnia 1 maja 2024 r.")),

@@ -76,15 +76,23 @@ def html_text(node) -> str:
 
 # ----------------------------------------------------------------------
 # Akty prawne z ELI API pobrane ścieżką HTML (patrz `EliClient.text()` w
-# `orzeczenia/sources/sejm_eli.py`) mają dwa własne, potwierdzone na żywo
-# problemy (DU 2024/1723, DU 2024/770), których `html_text()` wyżej (funkcja
-# WSPÓLNA też z orzeczeniami sądowymi) nie rozwiązuje:
+# `orzeczenia/sources/sejm_eli.py`) mają własne, potwierdzone na żywo
+# problemy (DU 2024/1723, DU 2024/770, DU 2023/1751), których `html_text()`
+# wyżej (funkcja WSPÓLNA też z orzeczeniami sądowymi) nie rozwiązuje:
 # 1. Brakujące spacje na granicy elementów źródłowego znacznika HTML (np.
 #    "Ministra Finansówz dnia 12 listopada 2024 r.uchylające...").
 # 2. Przypis o organie kierującym danym działem administracji rządowej
 #    (patrz `_KIERUJE_DZIALEM_CORE` wyżej) pojawia się PODWÓJNIE - raz
 #    sklejony wprost z tytułem (bez sensu dla czytelnika), raz poprawnie jako
 #    właściwy przypis na końcu - obie kopie są zbędne.
+# 3. Osobny, częstszy typ przypisu - o wdrażaniu/stosowaniu prawa unijnego
+#    (np. "2)Niniejsze rozporządzenie służy stosowaniu rozporządzenia
+#    Parlamentu Europejskiego i Rady (UE) nr 575/2013 ... (Dz. Urz. UE ...)."
+#    - też podwójny (raz sklejony z nagłówkiem sekcji, raz jako właściwy
+#    przypis) - sprawdzone na żywo na DU 2024/1723.
+# 4. Etykiety nawigacyjne strony ELI ("Spis treści", "Treść rozporządzenia",
+#    "Pokaż całość" itp.) trafiają do treści jako osobne "akapity" - to
+#    elementy interfejsu strony źródłowej, nie treść aktu.
 _AKT_MISSING_SPACE_RES = [
     (re.compile(r"(?<=[a-ząćęłńóśźż])(?=z dnia \d)"), " "),
     (re.compile(r"(?<=\d{4} r)\.(?=[a-ząćęłńóśźż])"), ". "),
@@ -93,6 +101,17 @@ _AKT_MISSING_SPACE_RES = [
 _AKT_KIERUJE_DZIALEM_RE = re.compile(
     rf"\s*\d+\)\s*{_KIERUJE_DZIALEM_CORE}[^\n]*?\(Dz\.\s*U\.[^)\n]*\)\.?",
     re.IGNORECASE)
+_AKT_TRANSPOZYCJA_RE = re.compile(
+    r"\s*\d+\)\s*Niniejsz\w+\s+\w+\s+(?:"
+    r"s[łl]u[żz]y\s+stosowaniu\s+rozporz[ąa]dzenia\s+Parlamentu\s+Europejskiego|"
+    r"(?:dokonuje\s+w\s+zakresie\s+swojej\s+regulacji\s+wdro[żz]enia|wdra[żz]a)\s+dyrektyw\w*"
+    r")[^\n]*?\((?:Dz\.\s*Urz\.\s*UE|Dz\.\s*U\.)[^)\n]*\)\.?",
+    re.IGNORECASE)
+_AKT_UI_NOISE_LINES = {
+    "treść ustawy", "treść rozporządzenia", "treść obwieszczenia", "treść uchwały",
+    "treść zarządzenia", "treść postanowienia", "treść decyzji", "spis treści",
+    "pokaż całość", "pokaż więcej",
+}
 
 
 def clean_akt_html_text(text: str | None) -> str | None:
@@ -102,11 +121,13 @@ def clean_akt_html_text(text: str | None) -> str | None:
     if not text:
         return text
     text = _AKT_KIERUJE_DZIALEM_RE.sub("", text)
+    text = _AKT_TRANSPOZYCJA_RE.sub("", text)
     for rx, repl in _AKT_MISSING_SPACE_RES:
         text = rx.sub(repl, text)
     text = re.sub(r"[ \t]{2,}", " ", text)
     lines = [ln.strip() for ln in text.split("\n")]
-    return "\n".join(ln for ln in lines if ln).strip()
+    lines = [ln for ln in lines if ln and ln.lower() not in _AKT_UI_NOISE_LINES]
+    return "\n".join(lines).strip()
 
 
 # ----------------------------------------------------------------------
