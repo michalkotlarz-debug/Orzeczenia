@@ -384,10 +384,10 @@ def akt_page(request: Request, publisher: str, year: int, pos: int):
     return templates.TemplateResponse(request, "akt.html", context)
 
 
-@app.get("/hasla", response_class=HTMLResponse)
 _HASLA_LETTERY_WYLACZONE = {"Y", "V", "Ą", "Ę", "Ó", "Q", "X"}
 
 
+@app.get("/hasla", response_class=HTMLResponse)
 def hasla_page(request: Request):
     store = get_store()
     hasla = sorted(store.thematic_counts(), key=lambda h: h["name"].lower()) if store else []
