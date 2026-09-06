@@ -90,8 +90,12 @@ with tempfile.TemporaryDirectory() as tmp:
              publication_date="2026-01-20", court="Sąd Okręgowy w Y")
     store.upsert_documents([d1, d2])
 
-    check("bez żadnego kryterium nic nie zwraca (jak portal przy pustym)",
-         store.search_advanced(), ([], 0))
+    rows, total = store.search_advanced()
+    check("bez żadnego kryterium przeglada WSZYSTKO (jak /akty bez filtrow)",
+         sorted(r["doc_id"] for r in rows), ["D1", "D2"])
+    check("licznik bez kryterium to cala tabela", total, 2)
+    check("bez kryterium liczniki per zrodlo tez dzialaja",
+         store.count_advanced_by_source(), {"ms": 2})
 
     rows, total = store.search_advanced(signature="II K 971")
     check("filtr po sygnaturze (częściowej)", [r["doc_id"] for r in rows], ["D1"])

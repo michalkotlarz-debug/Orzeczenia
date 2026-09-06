@@ -76,11 +76,7 @@ button{font:inherit;cursor:pointer}
   .bar nav{gap:2px}
   .bar nav a{padding:7px 8px}
   .bar nav .lbl{display:none}
-  .doc-counter{padding:7px 6px}
 }
-.doc-counter{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;
-  font-size:14px;color:var(--muted)}
-.doc-counter b{color:var(--ink);font-weight:700}
 
 /* ---------------- przełącznik motywu ---------------- */
 .theme-toggle{width:34px;height:34px;border:1px solid var(--line);background:var(--panel);

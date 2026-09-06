@@ -169,24 +169,6 @@
     });
   });
 
-  /* Licznik pobranych orzeczeń na stronie głównej - dogrywany z /api/health,
-     żeby rósł bez przeładowania strony w miarę jak obserwator dokłada nowe. */
-  function refreshDocCount() {
-    var els = document.querySelectorAll("[data-doc-count]");
-    if (!els.length) return;
-    fetch("/api/health").then(function (r) { return r.json(); }).then(function (d) {
-      var baza = d && d.baza;
-      if (!baza) return;
-      var total = 0;
-      for (var k in baza) { if (Object.prototype.hasOwnProperty.call(baza, k)) total += baza[k]; }
-      var formatted = total.toLocaleString("pl-PL").replace(/ /g, " ");
-      els.forEach(function (el) {
-        var b = el.querySelector("b");
-        if (b) b.textContent = formatted;
-      });
-    }).catch(function () { /* strona ma już wartość wyrenderowaną na serwerze */ });
-  }
-
   /* Ostatnie wyszukiwania - podpowiedzi we wciaz pustym polu frazy, osobno
      dla orzeczen i aktow prawnych (nie mieszamy dwoch roznych domen). */
   var RECENT_MAX = 5;
@@ -223,6 +205,4 @@
   render();
   bind();
   refreshCount();
-  refreshDocCount();
-  setInterval(refreshDocCount, 60000);
 })();

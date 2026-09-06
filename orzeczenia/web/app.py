@@ -145,11 +145,12 @@ def _clean_per_page(value: int) -> int:
 def _search(query: Query, page: int, source: str,
            per_page: int = DEFAULT_PAGE_SIZE) -> SearchPage:
     """Wyniki wyłącznie z własnej bazy - patrz nagłówek modułu. Bez żadnego
-    kryterium (`query.is_empty()`) nie zwraca nic, tak jak portal źródłowy
-    dawniej przy pustym zapytaniu."""
+    kryterium przegląda wszystko od najnowszej daty orzeczenia (patrz
+    `Store.search_advanced`), tak samo jak `/akty` bez filtrów - zakładka
+    "Orzeczenia" w nawigacji ma być od razu przeglądalna."""
     per_page = _clean_per_page(per_page)
     store = get_store()
-    if store is None or query.is_empty():
+    if store is None:
         return SearchPage(page=page, per_page=per_page)
 
     if _is_simple_phrase(query) and query.sort == "relevance":

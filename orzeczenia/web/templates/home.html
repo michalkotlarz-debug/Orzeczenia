@@ -2,11 +2,6 @@
 {% from "_card.html" import result_card %}
 {% from "_akt_card.html" import akt_card %}
 {% from "_icons.html" import icon %}
-{% block nav_extra %}
-<span class="doc-counter" title="Liczba orzeczeń w naszej bazie" data-doc-count>
-  {{ icon('gavel', 'ic') }} <b>{{ "{:,}".format(baza_razem|default(0)).replace(",", " ") }}</b> <span class="lbl">pobranych</span>
-</span>
-{% endblock %}
 {% block content %}
 <section class="hero">
   <div class="wrap narrow">

@@ -674,15 +674,15 @@ class Store:
         """Jak `search_fulltext`, ale obsługuje też pozostałe filtry z formularza
         (sygnatura, sędzia, podstawa prawna, hasło, szczebel sądu, zakres dat) -
         dzięki temu wyszukiwanie z filtrami też czyta najpierw z własnej bazy
-        zamiast zawsze pytać portal na żywo. Bez ŻADNEGO kryterium nie zwraca nic
-        (tak samo jak portal źródłowy przy pustym zapytaniu)."""
+        zamiast zawsze pytać portal na żywo. Bez ŻADNEGO kryterium przegląda
+        WSZYSTKO od najnowszej daty orzeczenia - tak samo jak `search_akty()`
+        dla aktów prawnych (zakładka "Orzeczenia" w nawigacji ma być od razu
+        przeglądalna, nie pustym ekranem czekającym na wpisaną frazę)."""
         where, params, phrase = self._advanced_where(
             phrase=phrase, source=source, signature=signature, judge=judge,
             legal_basis=legal_basis, thematic=thematic, court=court, date_field=date_field,
             date_from=date_from, date_to=date_to)
-        if not where:
-            return [], 0
-        where_sql = " AND ".join(where)
+        where_sql = " AND ".join(where) if where else "1=1"
 
         date_col = "publication_date" if date_field == "publication" else "judgment_date"
         order = {"date_desc": "judgment_date DESC", "date_asc": "judgment_date ASC",
@@ -712,9 +712,7 @@ class Store:
             k: kwargs.get(k, "") for k in
             ("phrase", "signature", "judge", "legal_basis", "thematic", "court",
              "date_field", "date_from", "date_to")})
-        if not where:
-            return {}
-        where_sql = " AND ".join(where)
+        where_sql = " AND ".join(where) if where else "1=1"
         rows = self._rows(
             f"SELECT source, COUNT(*) AS n FROM orzeczenia WHERE {where_sql} "
             f"GROUP BY source", params)
