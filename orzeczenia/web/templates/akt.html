@@ -18,9 +18,6 @@
       </div>
       <h1>{{ a.title or '(bez tytułu)' }}</h1>
       <p class="doc-sub">{{ a.publisher }} {{ a.year }} poz. {{ a.pos }}{% if a.eli %} · ELI {{ a.eli }}{% endif %}</p>
-      <div class="doc-tools">
-        {% if a.source_url %}<a class="ghost" href="{{ a.source_url }}" target="_blank" rel="noopener">{{ icon('external','ic') }} Źródło (ELI API)</a>{% endif %}
-      </div>
     </header>
 
     {% if jednolity_for %}

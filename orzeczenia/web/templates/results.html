@@ -31,7 +31,6 @@
           class="{% if (per_page|default(20)) == size %}on{% endif %}"
           href="/szukaj?{{ params|urlencode_extra('per_page', size) }}">{{ size }}</a>{% endfor %}
       </span>
-      {% if res.hits %}<a class="ghost" href="/eksport.csv?{{ request.url.query }}">{{ icon('download', 'ic') }} Pobierz listę (CSV)</a>{% endif %}
     </div>
   </div>
 

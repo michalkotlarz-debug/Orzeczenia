@@ -7,8 +7,6 @@ prostu tego nie zobaczy - strona nigdy nie odpytuje portali na żywo w reakcji
 na odwiedziny."""
 from __future__ import annotations
 
-import csv
-import io
 import logging
 import secrets
 import threading
@@ -401,27 +399,6 @@ def api_akt(publisher: str, year: int, pos: int):
 def favourites_page(request: Request):
     """Lista jest budowana w przeglądarce z localStorage - serwer nic o niej nie wie."""
     return templates.TemplateResponse(request, "ulubione.html", {})
-
-
-@app.get("/eksport.csv")
-def export_csv(q: str = "", signature: str = "", judge: str = "", thematic: str = "",
-               legal_basis: str = "", court: str = "", date_field: str = "judgment",
-               date_from: str = "", date_to: str = "", sort: str = "relevance",
-               source: str = "", page: int = Q(1, ge=1)):
-    query = _query(phrase=q, signature=signature, judge=judge, thematic=thematic,
-                   legal_basis=legal_basis, court=court, date_field=date_field,
-                   date_from=date_from, date_to=date_to, sort=sort)
-    res = _search(query, page=page, source=source, per_page=DEFAULT_PAGE_SIZE)
-
-    buf = io.StringIO()
-    w = csv.writer(buf, delimiter=";")
-    w.writerow(["sygnatura", "typ", "data_orzeczenia", "data_publikacji", "sad_organ"])
-    for h in res.hits:
-        w.writerow([h.signature, h.doc_type, h.judgment_date, h.publication_date, h.court])
-    return StreamingResponse(
-        iter([("﻿" + buf.getvalue()).encode("utf-8")]),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": 'attachment; filename="orzeczenia.csv"'})
 
 
 # ----------------------------------------------------------------------
