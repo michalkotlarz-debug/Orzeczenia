@@ -36,7 +36,7 @@ env.globals.update(
     date_field_labels={"judgment": "data orzeczenia", "publication": "data publikacji"},
     sort_labels={"relevance": "trafność", "date_desc": "data orzeczenia ↓",
                  "date_asc": "data orzeczenia ↑", "pub_desc": "data publikacji ↓"},
-    plural_pl=plural_pl)
+    plural_pl=plural_pl, TABLE_SENTINEL="@@TABLE@@", static_version="test")
 env.filters["datepl"] = date_pl
 
 
@@ -168,7 +168,8 @@ try:
                available_letters=["A", "K"])
     assert "hasla-search-input" in h, "brak pola wyszukiwania"
     assert 'data-letter="A"' in h, "brak atrybutu litery na haśle"
-    assert h.count("disabled") >= 20, "litery bez haseł powinny być wyszarzone"
+    assert h.count('class="letter"') == 2, "tylko litery z hasłami (A, K) powinny się pokazać"
+    assert '>B<' not in h, "litera bez hasła nie powinna w ogóle się renderować"
 
     render("hasla.html", "12-hasla-pusto.html", hasla=[], available_letters=[])
     reg.close()

@@ -91,6 +91,23 @@ if cfg.web.cors_origins:
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
+
+def _static_version() -> str:
+    """Skrót zawartości app.js/style.css - doklejany jako `?v=` do ich
+    adresów w base.html. Bez tego przeglądarki cache'ują statyczne pliki pod
+    tym samym adresem między wdrożeniami (brak nagłówka Cache-Control z
+    krótkim TTL) i po deployu nowego JS-a/CSS-a użytkownicy z już otwartą
+    kartą dalej dostają starą wersję ze swojego cache'u - sprawdzone na
+    żywo (filtry na /hasla nie działały u użytkownika mimo poprawnego kodu
+    na serwerze, dopóki nie odświeżył z pominięciem cache'u)."""
+    import hashlib
+    h = hashlib.md5()
+    for name in ("app.js", "style.css"):
+        h.update((BASE_DIR / "static" / name).read_bytes())
+    return h.hexdigest()[:10]
+
+
 templates.env.globals.update(
     site_name=cfg.web.site_name,
     source_label=registry.labels,
@@ -99,6 +116,7 @@ templates.env.globals.update(
                  "date_asc": "data orzeczenia ↑", "pub_desc": "data publikacji ↓"},
     plural_pl=plural_pl,
     TABLE_SENTINEL=TABLE_SENTINEL,
+    static_version=_static_version(),
 )
 templates.env.filters["datepl"] = date_pl
 
@@ -367,12 +385,22 @@ def akt_page(request: Request, publisher: str, year: int, pos: int):
 
 
 @app.get("/hasla", response_class=HTMLResponse)
+_HASLA_LETTERY_WYLACZONE = {"Y", "V", "Ą", "Ę", "Ó", "Q", "X"}
+
+
 def hasla_page(request: Request):
     store = get_store()
     hasla = sorted(store.thematic_counts(), key=lambda h: h["name"].lower()) if store else []
     for h in hasla:
         h["letter"] = h["name"][:1].upper() if h["name"] else "#"
-    available_letters = sorted({h["letter"] for h in hasla})
+    # Kilka liter nie ma sensu jako osobne przyciski nawigacji (obce w
+    # polskim alfabecie na początku wyrazu albo prawie nigdy nie występujące
+    # jako pierwsza litera hasła) - na wyraźne życzenie usunięte z paska
+    # całkowicie, nie tylko wyszarzone. Hasło zaczynające się taką literą
+    # (jeśli w ogóle istnieje) nadal jest widoczne w "Wszystkie" i przez
+    # wyszukiwanie - znika tylko dedykowany przycisk litery.
+    available_letters = sorted(
+        {h["letter"] for h in hasla} - _HASLA_LETTERY_WYLACZONE)
     return templates.TemplateResponse(request, "hasla.html", {
         "hasla": hasla, "available_letters": available_letters})
 

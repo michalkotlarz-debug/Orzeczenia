@@ -232,7 +232,6 @@
     }
     if (haslaNav) {
       haslaNav.querySelectorAll(".letter").forEach(function (btn) {
-        if (btn.disabled) return;
         btn.addEventListener("click", function () {
           activeLetter = btn.getAttribute("data-letter");
           haslaNav.querySelectorAll(".letter").forEach(function (b) {

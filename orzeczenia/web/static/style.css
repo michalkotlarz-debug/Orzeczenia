@@ -174,9 +174,8 @@ main h2{font-size:17px;font-weight:650;letter-spacing:-.01em}
 .letter{border:1px solid var(--line);background:var(--panel);color:var(--ink-soft);
   font-size:13px;font-family:var(--mono);padding:6px 10px;border-radius:8px;min-width:32px;
   text-align:center}
-.letter:hover:not(:disabled){border-color:var(--navy);color:var(--navy)}
+.letter:hover{border-color:var(--navy);color:var(--navy)}
 .letter.on{background:var(--navy);border-color:var(--navy);color:var(--navy-ink);font-weight:600}
-.letter:disabled{opacity:.32;cursor:default}
 .letter[data-letter=""]{font-family:inherit;font-weight:600}
 
 .hasla-index{columns:3;column-gap:28px}

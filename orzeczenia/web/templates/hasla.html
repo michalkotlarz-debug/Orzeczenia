@@ -17,10 +17,8 @@
 
   <nav class="letter-nav" id="hasla-letter-nav">
     <button type="button" class="letter on" data-letter="">Wszystkie</button>
-    {% for L in ('A','Ą','B','C','Ć','D','E','Ę','F','G','H','I','J','K','L','Ł','M','N',
-                'Ń','O','Ó','P','Q','R','S','Ś','T','U','V','W','X','Y','Z','Ź','Ż') %}
-    <button type="button" class="letter{% if L not in available_letters %} off{% endif %}"
-            data-letter="{{ L }}"{% if L not in available_letters %} disabled{% endif %}>{{ L }}</button>
+    {% for L in available_letters %}
+    <button type="button" class="letter" data-letter="{{ L }}">{{ L }}</button>
     {% endfor %}
   </nav>
 

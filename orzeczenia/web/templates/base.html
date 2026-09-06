@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{{ site_name }}{% endblock %}</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v={{ static_version }}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>⚖️</text></svg>">
 <script>
 /* Ustawiane przed narysowaniem strony, żeby nie było błysku złym motywem. */
@@ -43,6 +43,6 @@
   </div>
 </footer>
 
-<script src="/static/app.js" defer></script>
+<script src="/static/app.js?v={{ static_version }}" defer></script>
 </body>
 </html>
