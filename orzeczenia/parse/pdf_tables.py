@@ -118,6 +118,10 @@ def _page_segments(page: Any) -> list[tuple[str, Any]]:
     temu tabela ląduje w tekście DOKŁADNIE tam, gdzie jest w oryginale, a nie
     np. na końcu dokumentu."""
     tables = sorted(page.find_tables(), key=lambda t: t.bbox[1])
+    if not tables:
+        # Strona bez tabel - cały jej tekst to jeden segment, bez cięcia na
+        # pasma (te istnieją tylko po to, żeby okalać tabele).
+        return [("text", page.extract_text() or "")]
     segments: list[tuple[str, Any]] = []
     cursor = 0.0
     for t in tables:
@@ -134,8 +138,6 @@ def _page_segments(page: Any) -> list[tuple[str, Any]]:
         txt = band.extract_text() or ""
         if txt.strip():
             segments.append(("text", txt))
-    if not tables:
-        segments.append(("text", page.extract_text() or ""))
     return segments
 
 
