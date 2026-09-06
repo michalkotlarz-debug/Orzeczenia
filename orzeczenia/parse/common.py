@@ -421,6 +421,13 @@ def legal_basis_terms_for_akt(title: str | None) -> list[str] | None:
     if not title:
         return None
     low = title.lower()
+    if "o zmianie" in low:
+        # "Ustawa z dnia ... o zmianie ustawy - Kodeks karny" WSPOMINA kodeks
+        # w tytule, ale SAMA nim nie jest - to nowelizacja, więc orzeczenia
+        # cytujące "kk" cytują AKTUALNY tekst kodeksu, nie tę konkretną
+        # nowelizującą ustawę. Sprawdzone na żywo (DU 2025/1818: "Ustawa (...)
+        # o zmianie ustawy - Kodeks karny, ustawy - Kodeks postępowania (...)").
+        return None
     for name, terms in _MAJOR_CODES:
         if name in low:
             return terms

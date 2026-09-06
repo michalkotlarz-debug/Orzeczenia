@@ -399,6 +399,11 @@ check("Kodeks karny wykonawczy NIE trafia w krotszy 'Kodeks karny'",
 check("zwykle rozporzadzenie -> brak dopasowania (None)",
      legal_basis_terms_for_akt("Rozporządzenie Ministra Finansów w sprawie wagi ryzyka"), None)
 check("brak tytulu -> None", legal_basis_terms_for_akt(None), None)
+check("ustawa NOWELIZUJACA kodeks karny -> None (to nie sam kodeks)",
+     legal_basis_terms_for_akt(
+         "Ustawa z dnia 7 listopada 2025 r. o zmianie ustawy - Kodeks karny, "
+         "ustawy - Kodeks postępowania karnego oraz niektórych innych ustaw"),
+     None)
 check("idempotentne (html) - drugie przejście nic już nie zmienia",
      clean_akt_html_text(clean_akt_html_text("Ministra Finansówz dnia 1 maja 2024 r.")),
      clean_akt_html_text("Ministra Finansówz dnia 1 maja 2024 r."))
