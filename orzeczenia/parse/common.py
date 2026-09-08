@@ -528,11 +528,19 @@ _PDF_NOISE_RES = [
     # raz tak, raz inaczej dla różnych aktów z tego samego dziennika) -
     # dlatego dopasowanie działa też, gdy szum jest na początku sklejonego
     # wiersza, nie tylko gdy stoi w całości sam.
+    #
+    # UWAGA: wzorzec "poz." niżej ma `\b` zaraz po `\d+` - bez tego silnik
+    # regex przy nieudanym dopasowaniu (bo dalej jest zabroniony ", i N")
+    # cofa się (backtracking) i próbuje KRÓTSZEGO dopasowania cyfr, np.
+    # z "poz. 1002 i 2754)" wytnie samo "poz. 100", zostawiając rozjechane
+    # "2 i 2754)" - sprawdzone na żywo na DU 2023/1550. `\b` wymusza granicę
+    # słowa zaraz po cyfrach, a między dwiema cyframi takiej granicy nie ma,
+    # więc skrócone dopasowanie już nie przechodzi.
     re.compile(r"(?:(?<=\n)|^)\s*dziennik ustaw(\s+rzeczypospolitej polskiej)?\s*", re.IGNORECASE),
     re.compile(r"(?:(?<=\n)|^)\s*dziennik urzędowy rzeczypospolitej polskiej\s*", re.IGNORECASE),
     re.compile(r"(?:(?<=\n)|^)\s*monitor polski\s*", re.IGNORECASE),
     re.compile(r"(?:(?<=\n)|^)\s*[–—-]\s*\d+\s*[–—-]\s*"),
-    re.compile(r"(?:(?<=\n)|^)\s*poz\.\s*\d+\.?(?!\s*[,i]\s*\d)\s*", re.IGNORECASE),
+    re.compile(r"(?:(?<=\n)|^)\s*poz\.\s*\d+\b\.?(?!\s*[,i]\s*\d)\s*", re.IGNORECASE),
     re.compile(r"(?:(?<=\n)|^)\s*warszawa,\s*dnia\s+\d{1,2}\s+\w+\s+\d{4}\s*r\.?\s*", re.IGNORECASE),
 ]
 # Numer/litera punktu, który w PDF-ie wypadł na końcu strony osobno od

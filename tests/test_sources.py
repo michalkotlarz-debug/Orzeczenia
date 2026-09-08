@@ -298,6 +298,12 @@ check("samotny numer punktu bez treści -> sklejony z następnym akapitem",
 check("prawdziwy cytat 'poz. NNNN i MMMM' w środku zdania NIE jest usuwany",
      clean_pdf_text("publicznych (Dz. U. z 2024 r. poz. 1669 i 1863) wprowadza się zmiany."),
      "publicznych (Dz. U. z 2024 r. poz. 1669 i 1863) wprowadza się zmiany.")
+check("cytat 'poz. NNNN i MMMM' złamany na POCZĄTKU wiersza -> cyfry NIE są ucinane "
+     "(regresja: backtracking bez \\b ucinał 'poz. 1002' do 'poz. 100', zostawiając "
+     "rozjechane '2 i 2754' - sprawdzone na żywo na DU 2023/1550)",
+     clean_pdf_text("(Dz. U. poz. 2320, z 2021 r. poz. 1135 oraz z 2022 r.\n"
+                    "poz. 1002 i 2754) wprowadza się zmiany."),
+     "(Dz. U. poz. 2320, z 2021 r. poz. 1135 oraz z 2022 r. poz. 1002 i 2754) wprowadza się zmiany.")
 check("nagłówki sklejone jednym złamaniem wiersza z tytułem aktu -> też usunięte",
      clean_pdf_text("DZIENNIK USTAW\nRZECZYPOSPOLITEJ POLSKIEJ\nWarszawa, dnia 30 grudnia 2025 r.\n"
                     "Poz. 1881\nUSTAWA\nz dnia 4 grudnia 2025 r.\n\no zmianie ustawy.",
