@@ -77,7 +77,22 @@ class EliClient:
         if meta.get("textHTML"):
             html = self.http.get(self._url(f"/acts/{publisher}/{year}/{pos}/text.html"),
                                  ttl=21600)
-            text = clean_akt_html_text(html_text(BeautifulSoup(html, "lxml").body))
+            soup = BeautifulSoup(html, "lxml")
+            # ELI stawia PRZED właściwą treścią pełny spis treści aktu jako
+            # nawigacyjny <div id="toc"> (lista linków do każdego
+            # Tytułu/Działu/Rozdziału/Artykułu) - dla obszernych aktów (np.
+            # cały Kodeks postępowania cywilnego) to setki wierszy, które w
+            # kolejności dokumentu wypadają PRZED właściwym wstępem/treścią
+            # obwieszczenia, więc czytelnik przewijający stronę od góry widzi
+            # najpierw ścianę samych nagłówków i wygląda, jakby reszta treści
+            # zniknęła - sprawdzone na żywo na DU 2023/1550 (użytkownik: "wszystko
+            # wyciąłeś"). Te same nagłówki i tak pojawiają się naturalnie w
+            # dalszej części dokumentu przed każdą sekcją, więc ten blok jest
+            # czystym duplikatem - bezpiecznie go usuwamy w całości.
+            toc = soup.find(id="toc")
+            if toc:
+                toc.decompose()
+            text = clean_akt_html_text(html_text(soup.body))
             if text:
                 return text, "html"
         if meta.get("textPDF"):
