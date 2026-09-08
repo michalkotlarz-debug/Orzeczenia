@@ -57,6 +57,16 @@
         {% for k in a.keywords %}<span class="chip">{{ k }}</span>{% endfor %}</dd></div>{% endif %}
     </dl>
 
+    <section class="block">
+      <h2>Treść</h2>
+      {% if a.full_text %}
+      <div class="text">{% for para in a.full_text.split("\n") %}{% if para.startswith(TABLE_SENTINEL) %}{{ para[TABLE_SENTINEL|length:] | safe }}{% else %}<p>{{ para }}</p>{% endif %}{% endfor %}</div>
+      {% if a.text_source == 'pdf' %}<p class="fhint">{{ icon('info','ic') }} Tekst wyciągnięty automatycznie z oryginału PDF - może zawierać drobne błędy formatowania.</p>{% endif %}
+      {% else %}
+      <p class="fhint">{{ icon('info','ic') }} Rządowe centrum legislacji nie opublikowało jeszcze treści tego aktu (ani HTML, ani PDF) - spróbuj ponownie później.</p>
+      {% endif %}
+    </section>
+
     {% if wykonawcze %}
     <section class="block">
       <h2>Rozporządzenia wykonawcze</h2>
@@ -92,16 +102,6 @@
       {% endfor %}
     </section>
     {% endif %}
-
-    <section class="block">
-      <h2>Treść</h2>
-      {% if a.full_text %}
-      <div class="text">{% for para in a.full_text.split("\n") %}{% if para.startswith(TABLE_SENTINEL) %}{{ para[TABLE_SENTINEL|length:] | safe }}{% else %}<p>{{ para }}</p>{% endif %}{% endfor %}</div>
-      {% if a.text_source == 'pdf' %}<p class="fhint">{{ icon('info','ic') }} Tekst wyciągnięty automatycznie z oryginału PDF - może zawierać drobne błędy formatowania.</p>{% endif %}
-      {% else %}
-      <p class="fhint">{{ icon('info','ic') }} Rządowe centrum legislacji nie opublikowało jeszcze treści tego aktu (ani HTML, ani PDF) - spróbuj ponownie później.</p>
-      {% endif %}
-    </section>
   </article>
 </div>
 {% endblock %}

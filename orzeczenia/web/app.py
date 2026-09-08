@@ -309,6 +309,14 @@ def akty_page(
 ):
     store = get_store()
     per_page = _clean_per_page(per_page)
+    # Ustawa MOŻE mieć kilka tekstów jednolitych ogłoszonych na przestrzeni lat
+    # (za każdą nowelizacją) - bez tego filtra widok "tylko teksty jednolite"
+    # pokazywał też dawno nieobowiązujące, zastąpione już pozycje (np. stary
+    # tekst jednolity KPC sprzed kolejnego ogłoszenia). Domyślnie ograniczamy
+    # do obowiązujących - nie nadpisujemy jednak świadomego wyboru użytkownika,
+    # gdyby chciał jawnie zobaczyć też nieobowiązujące.
+    if jednolity == "1" and not in_force:
+        in_force = "1"
     if store is None:
         rows, total, counts = [], 0, {}
     else:
@@ -422,6 +430,8 @@ def api_akty(q: str = "", publisher: str = "", act_type: str = "", in_force: str
             page: int = Q(1, ge=1), per_page: int = Q(DEFAULT_PAGE_SIZE)):
     store = get_store()
     per_page = _clean_per_page(per_page)
+    if jednolity == "1" and not in_force:
+        in_force = "1"
     if store is None:
         return JSONResponse({"error": _store_error}, status_code=503)
     rows, total = store.search_akty(
