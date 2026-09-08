@@ -397,6 +397,12 @@ check("etykiety Spis treści / Pokaż całość -> usunięte",
      clean_akt_html_text("Tytuł aktu\nSpis treści\nTreść obwieszczenia\nTreść obwieszczenia\n"
                          "Prawdziwa treść.\nPokaż całość"),
      "Tytuł aktu\nPrawdziwa treść.")
+check("cudzysłów cytowanego przepisu w osobnym bloku -> sklejony z tekstem "
+     "(regresja: ELI stawia „ i ” jako osobne 'akapity' - 90 takich linii "
+     "sprawdzone na żywo na DU 2023/1550)",
+     clean_akt_html_text("który stanowi:\n„\nArt. 15. Ustawa wchodzi w życie po upływie 14 dni.\n”\n"
+                         "Dalszy tekst."),
+     "który stanowi:\n„Art. 15. Ustawa wchodzi w życie po upływie 14 dni.”\nDalszy tekst.")
 check("puste wejście nie crashuje (html)", clean_akt_html_text(None), None)
 
 print("\n== legal_basis_terms_for_akt: mapowanie duzych kodeksow na skroty w legal_basis ==")

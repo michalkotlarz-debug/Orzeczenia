@@ -116,6 +116,30 @@ _AKT_UI_NOISE_LINES = {
 }
 
 
+def _merge_lone_quotes(lines: list[str]) -> list[str]:
+    """ELI stawia cudzysłów otwierający/zamykający cytowanego przepisu (np.
+    w wyliczeniu wyłączeń z tekstu jednolitego: „Art. 15. Ustawa wchodzi...”)
+    w OSOBNYM znaczniku blokowym niż sam cytat - bez sklejenia strona
+    pokazuje dziesiątki "akapitów" składających się z samego „ albo samego ”
+    (sprawdzone na żywo: 90 takich linii na DU 2023/1550, tekst jednolity
+    KPC). Doklejamy otwierający do POCZĄTKU następnej linii, zamykający do
+    KOŃCA poprzedniej."""
+    out: list[str] = []
+    i, n = 0, len(lines)
+    while i < n:
+        if lines[i] == "„" and i + 1 < n:
+            out.append("„" + lines[i + 1])
+            i += 2
+            continue
+        if lines[i] == "”" and out:
+            out[-1] = out[-1] + "”"
+            i += 1
+            continue
+        out.append(lines[i])
+        i += 1
+    return out
+
+
 def clean_akt_html_text(text: str | None) -> str | None:
     """Odpowiednik `clean_pdf_text()` dla aktów pobranych ścieżką HTML -
     patrz uzasadnienie wyżej. Bezpieczne do uruchomienia wielokrotnie i
@@ -129,6 +153,7 @@ def clean_akt_html_text(text: str | None) -> str | None:
     text = re.sub(r"[ \t]{2,}", " ", text)
     lines = [ln.strip() for ln in text.split("\n")]
     lines = [ln for ln in lines if ln and ln.lower() not in _AKT_UI_NOISE_LINES]
+    lines = _merge_lone_quotes(lines)
     return "\n".join(lines).strip()
 
 
