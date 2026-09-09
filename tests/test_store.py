@@ -399,6 +399,32 @@ with tempfile.TemporaryDirectory() as tmp:
     store.close()
 
 # ----------------------------------------------------------------------
+print("\n== latest_akty / search_akty: sortowanie chronologiczne, akty bez daty NA KONCU ==")
+with tempfile.TemporaryDirectory() as tmp:
+    store = Store(f"sqlite:///{tmp}/test.sqlite3", keep_days=400)
+    # Kolejnosc wstawiania CELOWO nie jest chronologiczna - sprawdzamy, ze to
+    # ORDER BY, nie kolejnosc importu, decyduje o wyniku. Jeden akt BEZ daty
+    # ogloszenia (typowe dla swiezo zaimportowanych pozycji, zanim ELI poda
+    # metadane) - sprawdzone na zywo: bez jawnego NULLS LAST Postgres stawia
+    # taki wpis PRZED prawdziwie najnowszymi (domyslne NULLS FIRST dla DESC).
+    store.upsert_akty([
+        {"publisher": "DU", "year": 2022, "pos": 1, "title": "Srodkowy",
+         "act_type": "Ustawa", "source_url": "http://x", "promulgation_date": "2022-06-01"},
+        {"publisher": "DU", "year": 2026, "pos": 1, "title": "Bez daty ogloszenia",
+         "act_type": "Ustawa", "source_url": "http://x"},
+        {"publisher": "DU", "year": 2024, "pos": 1, "title": "Najnowszy",
+         "act_type": "Ustawa", "source_url": "http://x", "promulgation_date": "2024-01-01"},
+    ])
+    check("latest_akty: najnowsza data ogloszenia pierwsza, brak daty NA KONCU",
+         [a["title"] for a in store.latest_akty()],
+         ["Najnowszy", "Srodkowy", "Bez daty ogloszenia"])
+    rows, _ = store.search_akty()
+    check("search_akty: to samo sortowanie bez zadnych filtrow",
+         [a["title"] for a in rows],
+         ["Najnowszy", "Srodkowy", "Bez daty ogloszenia"])
+    store.close()
+
+# ----------------------------------------------------------------------
 print("\n== run_once: dociąganie starszego archiwum, gdy portal nic nowego nie ma ==")
 with tempfile.TemporaryDirectory() as tmp:
     store = Store(f"sqlite:///{tmp}/test.sqlite3", keep_days=400)

@@ -1038,7 +1038,12 @@ class Store:
         if publisher:
             sql += " AND publisher = ?"
             params.append(publisher)
-        sql += " ORDER BY promulgation_date DESC, year DESC, pos DESC LIMIT ?"
+        # UWAGA: "NULLS LAST" jest tu konieczne - Postgres domyślnie stawia
+        # NULL-e na POCZĄTKU przy sortowaniu DESC, więc bez tego akty bez
+        # wypełnionej daty ogłoszenia wskakiwały przed prawdziwie najnowsze
+        # (sprawdzone na żywo - zgłoszone przez użytkownika jako zła
+        # kolejność chronologiczna).
+        sql += " ORDER BY promulgation_date DESC NULLS LAST, year DESC, pos DESC LIMIT ?"
         params.append(int(limit))
         return [self._decode_akt(r) for r in self._rows(sql, params)]
 
@@ -1069,7 +1074,9 @@ class Store:
             where.append("promulgation_date <= ?")
             params.append(d)
         phrase = squash(phrase)
-        order = "promulgation_date DESC, year DESC, pos DESC"
+        # Patrz uwaga w latest_akty() - bez NULLS LAST Postgres stawia akty
+        # bez wypełnionej daty ogłoszenia przed prawdziwie najnowszymi.
+        order = "promulgation_date DESC NULLS LAST, year DESC, pos DESC"
         if phrase:
             if self.is_pg:
                 where.append("search_vector @@ plainto_tsquery('simple', unaccent(?))")
