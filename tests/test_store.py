@@ -425,6 +425,27 @@ with tempfile.TemporaryDirectory() as tmp:
     store.close()
 
 # ----------------------------------------------------------------------
+print("\n== akty_wstecz_stan: kursor cofania sie przetrwa 'redeploy' (nowe Store) ==")
+with tempfile.TemporaryDirectory() as tmp:
+    db = f"sqlite:///{tmp}/test.sqlite3"
+    store = Store(db, keep_days=400)
+    check("domyslny rok, gdy kursor jeszcze nie istnieje", store.get_akty_wstecz_year(2025), 2025)
+    store.set_akty_wstecz_year(2019)
+    check("odczyt zaraz po zapisie", store.get_akty_wstecz_year(2025), 2019)
+    store.close()
+    # Nowy obiekt Store wskazujacy na TA SAMA baze - symuluje redeploy
+    # (kontener startuje od nowa, ale baza jest ta sama). Kursor plikowy
+    # (dane/akty_wstecz_state.json) resetowalby sie tutaj do wartosci
+    # domyslnej - kursor w bazie MUSI przetrwac.
+    store2 = Store(db, keep_days=400)
+    check("kursor przetrwal nowe polaczenie ('redeploy')",
+         store2.get_akty_wstecz_year(2025), 2019)
+    store2.set_akty_wstecz_year(1917)
+    check("kolejny zapis nadpisuje (UPSERT), nie dubluje wiersza",
+         store2.get_akty_wstecz_year(2025), 1917)
+    store2.close()
+
+# ----------------------------------------------------------------------
 print("\n== _search_text / _akt_search_text: ograniczenie dlugosci dla tsvector ==")
 # Postgres ma twardy limit rozmiaru tsvector (1 048 575 bajtow) - obszerne
 # dokumenty (np. kilkusetstronicowy kodeks) go przekraczaly i wywalaly caly

@@ -16,9 +16,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-
-import json as _json
-from pathlib import Path
+from datetime import date
 
 from .config import Config
 from .http import PoliteClient, RateLimited, SourceUnavailable
@@ -27,21 +25,7 @@ from .store import Store
 
 log = logging.getLogger("orzecznik.akty_import")
 
-DEFAULT_BACKFILL_STATE = Path("dane/akty_wstecz_state.json")
 EARLIEST_YEAR = 1918   # DU sięga 1918, MP 1930 - poniżej po prostu nie ma już czego szukać
-
-
-def _load_backfill_year(state_path: Path, start_year: int) -> int:
-    try:
-        data = _json.loads(state_path.read_text(encoding="utf-8"))
-        return int(data["year"])
-    except (FileNotFoundError, KeyError, ValueError):
-        return start_year
-
-
-def _save_backfill_year(state_path: Path, year: int) -> None:
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(_json.dumps({"year": year}), encoding="utf-8")
 
 
 @dataclass
@@ -164,25 +148,33 @@ def import_changes(cfg: Config, store: Store, since: str | None = None,
 
 def import_backfill_batch(cfg: Config, store: Store, publishers: list[str] | None = None,
                           batch_per_publisher: int = 300, start_year: int = 2025,
-                          state_path: Path = DEFAULT_BACKFILL_STATE,
                           http: PoliteClient | None = None) -> dict:
-    """Jedna 'paczka' cofania się w głąb archiwum - do wywoływania cyklicznie
-    (np. co 30 minut z crona), zamiast ciągnąć cały rocznik naraz.
+    """Jedna 'paczka' cofania się w głąb archiwum - do wywoływania w pętli
+    (patrz deploy/run_akty_wstecz.sh - działa ciągle, nie tylko z crona),
+    zamiast ciągnąć cały rocznik naraz.
 
-    Pamięta, na którym roczniku stanęła (`state_path`) - gdy oba dzienniki
+    Kursor roku trzyma się w bazie (`Store.get/set_akty_wstecz_year`) - MUSI
+    tam być, nie w pliku na dysku kontenera, bo `/app` jest efemeryczny i
+    wypełniany od nowa przy każdym redeployu (sprawdzone na żywo: plikowy
+    kursor gubił postęp cofania się przy każdym wdrożeniu). Gdy oba dzienniki
     (DU i MP) mają już w bazie KOMPLET danego rocznika, przy następnym
-    wywołaniu przechodzi o rok wstecz. `batch_per_publisher` ogranicza, ile
-    NOWYCH pozycji na dziennik pobiera jedno wywołanie - tak, żeby pojedyncza
-    paczka trwała rzędu kilku-kilkunastu minut, nie godzin.
+    wywołaniu przechodzi o rok wstecz. Po dotarciu do `EARLIEST_YEAR` zaczyna
+    od nowa od BIEŻĄCEGO rocznika - to sprawia, że ciągle działająca pętla
+    (deploy/run_akty_wstecz.sh) naturalnie i bez osobnego wyzwalacza dogląda
+    też świeżo publikowanych pozycji w aktualnym roczniku, nie tylko starego
+    archiwum. `batch_per_publisher` ogranicza, ile NOWYCH pozycji na dziennik
+    pobiera jedno wywołanie - tak, żeby pojedyncza paczka trwała rzędu
+    kilku-kilkunastu minut, nie godzin.
     """
     publishers = publishers or list(cfg.eli.publishers)
-    year = _load_backfill_year(state_path, start_year)
+    year = store.get_akty_wstecz_year(start_year)
     own_http = http is None
     http = http or PoliteClient(cfg.http, cfg.cache)
     results: list[AktyImportResult] = []
     try:
         if year < EARLIEST_YEAR:
-            return {"year": year, "done": True, "results": []}
+            year = date.today().year
+            store.set_akty_wstecz_year(year)
         for pub in publishers:
             r = import_year(cfg, store, pub, year, http=http, limit=batch_per_publisher)
             results.append(r)
@@ -191,7 +183,7 @@ def import_backfill_batch(cfg: Config, store: Store, publishers: list[str] | Non
             r.status == "ok" and (r.already_had + r.downloaded) >= r.total_in_source
             for r in results)
         next_year = year - 1 if all_complete else year
-        _save_backfill_year(state_path, next_year)
+        store.set_akty_wstecz_year(next_year)
         return {"year": year, "next_year": next_year, "complete_this_year": all_complete,
                 "results": [r.__dict__ for r in results]}
     finally:

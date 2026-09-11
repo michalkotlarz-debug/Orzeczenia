@@ -128,6 +128,16 @@ CREATE TABLE IF NOT EXISTS akty_prawne (
 );
 CREATE INDEX IF NOT EXISTS ix_akty_promulgation ON akty_prawne (promulgation_date DESC);
 CREATE INDEX IF NOT EXISTS ix_akty_publisher    ON akty_prawne (publisher, year);
+
+-- Kursor cofania się wstecz przez roczniki (akty_import.import_backfill_batch).
+-- MUSI być w bazie, nie w pliku na dysku kontenera - `/app` jest efemeryczny
+-- (wypełniany od nowa przy każdym `docker run`, bez wolumenu), więc plikowy
+-- kursor resetował się do roku startowego przy KAŻDYM redeployu, gubiąc
+-- postęp cofania się w czasie (sprawdzone na żywo). Jeden wiersz na proces.
+CREATE TABLE IF NOT EXISTS akty_wstecz_stan (
+    id   INTEGER PRIMARY KEY,
+    year INTEGER NOT NULL
+);
 """
 
 SCHEMA_PG = SCHEMA_SQLITE.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
@@ -1027,6 +1037,19 @@ class Store:
                            f"WHERE publisher = ? AND year = ? AND pos = ?")
                 self._run(sql, updates, many=True)
         return added
+
+    def get_akty_wstecz_year(self, default_year: int) -> int:
+        """Kursor cofania się wstecz przez roczniki - patrz uwaga przy tabeli
+        akty_wstecz_stan (musi żyć w bazie, nie w pliku, żeby przetrwać
+        redeploy)."""
+        rows = self._rows("SELECT year FROM akty_wstecz_stan WHERE id = 1", [])
+        return int(rows[0]["year"]) if rows else default_year
+
+    def set_akty_wstecz_year(self, year: int) -> None:
+        # Składnia UPSERT-u identyczna w SQLite (3.24+) i Postgresie.
+        self._run(
+            "INSERT INTO akty_wstecz_stan (id, year) VALUES (1, ?) "
+            "ON CONFLICT (id) DO UPDATE SET year = excluded.year", [int(year)])
 
     def get_akt(self, publisher: str, year: int, pos: int) -> dict[str, Any] | None:
         rows = self._rows(

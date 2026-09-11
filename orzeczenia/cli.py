@@ -225,16 +225,19 @@ def akty_wstecz(
                               help="Ile NOWYCH pozycji na dziennik pobrać w tym wywołaniu"),
     start_year: int = typer.Option(2025, "--start-year",
                                    help="Od którego rocznika zacząć, jeśli nie ma jeszcze "
-                                        "zapisanego postępu (plik stanu)"),
+                                        "zapisanego postępu (kursor w bazie)"),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
     config: Path = typer.Option("config.yaml", "--config", "-c"),
 ):
     """Jedna PACZKA cofania się w głąb archiwum aktów prawnych - pamięta sama,
-    na którym roczniku stanęła (plik `dane/akty_wstecz_state.json`), i gdy
-    rocznik jest już kompletny w obu dziennikach, następnym razem schodzi rok
-    niżej. Do wpisania w crona / Harmonogram zadań co np. 30 minut:
+    na którym roczniku stanęła (kursor w bazie, patrz Store.get/set_akty_wstecz_year -
+    MUSI być w bazie, nie w pliku, żeby przetrwać redeploy), i gdy rocznik jest
+    już kompletny w obu dziennikach, następnym razem schodzi rok niżej. Po
+    dotarciu do najstarszego dostępnego rocznika zaczyna od nowa od BIEŻĄCEGO
+    roku - do uruchamiania w pętli ciągłej (deploy/run_akty_wstecz.sh), nie
+    tylko cyklicznie z crona:
 
-        */30 * * * *  cd /app && python -m orzeczenia akty-wstecz
+        while true; do python -m orzeczenia akty-wstecz; done
     """
     logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO,
                         format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
@@ -246,10 +249,6 @@ def akty_wstecz(
     try:
         info = import_backfill_batch(cfg, store, batch_per_publisher=batch,
                                      start_year=start_year)
-        if info.get("done"):
-            typer.echo(f"Gotowe - rocznik {info['year']} jest poniżej najstarszego "
-                      f"dostępnego w API, cofanie się zakończone.")
-            return
         for r in info["results"]:
             mark = "ok " if r["status"] == "ok" else "BŁĄD"
             typer.echo(f"[{mark}] {r['publisher']} {r['year']}: w źródle {r['total_in_source']}  "
