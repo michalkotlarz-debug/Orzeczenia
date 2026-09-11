@@ -157,35 +157,55 @@ def import_backfill_batch(cfg: Config, store: Store, publishers: list[str] | Non
     tam być, nie w pliku na dysku kontenera, bo `/app` jest efemeryczny i
     wypełniany od nowa przy każdym redeployu (sprawdzone na żywo: plikowy
     kursor gubił postęp cofania się przy każdym wdrożeniu). Gdy oba dzienniki
-    (DU i MP) mają już w bazie KOMPLET danego rocznika, przy następnym
-    wywołaniu przechodzi o rok wstecz. Po dotarciu do `EARLIEST_YEAR` zaczyna
-    od nowa od BIEŻĄCEGO rocznika - to sprawia, że ciągle działająca pętla
-    (deploy/run_akty_wstecz.sh) naturalnie i bez osobnego wyzwalacza dogląda
-    też świeżo publikowanych pozycji w aktualnym roczniku, nie tylko starego
-    archiwum. `batch_per_publisher` ogranicza, ile NOWYCH pozycji na dziennik
-    pobiera jedno wywołanie - tak, żeby pojedyncza paczka trwała rzędu
-    kilku-kilkunastu minut, nie godzin.
+    (DU i MP) mają już w bazie KOMPLET danego rocznika archiwum, przy
+    następnym wywołaniu przechodzi o rok wstecz. Po dotarciu do
+    `EARLIEST_YEAR` zaczyna od nowa od BIEŻĄCEGO rocznika.
+
+    Świeżo publikowane pozycje NIE czekają jednak na pełny okrążenie
+    archiwum: KAŻDE wywołanie najpierw sprawdza i dociąga BIEŻĄCY rocznik
+    (na wypadek, gdy coś nowego pojawiło się od ostatniego sprawdzenia),
+    a dopiero potem robi krok cofania się w głąb starego archiwum wg
+    zapisanego kursora - zgłoszone na żywo przez użytkownika: bez tego
+    pętla cofająca się wstecz (deploy/run_akty_wstecz.sh, działa ciągle)
+    dotarłaby do świeżych pozycji dopiero po całym okrążeniu do
+    najstarszego rocznika, co przy dużym archiwum mogłoby trwać godzinami.
+    Sprawdzenie już kompletnego bieżącego rocznika to jedno tanie
+    zapytanie o liczbę pozycji per dziennik, nie pełne pobieranie.
+    `batch_per_publisher` ogranicza, ile NOWYCH pozycji na dziennik pobiera
+    jedno wywołanie (osobno dla bieżącego rocznika i dla kroku w archiwum) -
+    tak, żeby pojedyncza paczka trwała rzędu kilku-kilkunastu minut, nie
+    godzin.
     """
     publishers = publishers or list(cfg.eli.publishers)
     year = store.get_akty_wstecz_year(start_year)
     own_http = http is None
     http = http or PoliteClient(cfg.http, cfg.cache)
-    results: list[AktyImportResult] = []
+    current_year = date.today().year
+    current_results: list[AktyImportResult] = []
+    archive_results: list[AktyImportResult] = []
     try:
         if year < EARLIEST_YEAR:
-            year = date.today().year
+            year = current_year
             store.set_akty_wstecz_year(year)
+
+        if current_year != year:
+            for pub in publishers:
+                current_results.append(
+                    import_year(cfg, store, pub, current_year, http=http,
+                               limit=batch_per_publisher))
+
         for pub in publishers:
-            r = import_year(cfg, store, pub, year, http=http, limit=batch_per_publisher)
-            results.append(r)
+            archive_results.append(
+                import_year(cfg, store, pub, year, http=http, limit=batch_per_publisher))
 
         all_complete = all(
             r.status == "ok" and (r.already_had + r.downloaded) >= r.total_in_source
-            for r in results)
+            for r in archive_results)
         next_year = year - 1 if all_complete else year
         store.set_akty_wstecz_year(next_year)
         return {"year": year, "next_year": next_year, "complete_this_year": all_complete,
-                "results": [r.__dict__ for r in results]}
+                "current_year": current_year,
+                "results": [r.__dict__ for r in current_results + archive_results]}
     finally:
         if own_http:
             http.close()
