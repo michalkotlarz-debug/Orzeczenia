@@ -15,7 +15,7 @@ from orzeczenia.config import Config, SourceConfig                    # noqa: E4
 from orzeczenia.obserwator import (                                   # noqa: E402
     _fetch_and_store_each, _is_uzasadnienie_pair, _merge_wyrok_uzasadnienie,
     merge_existing_duplicates, merge_specific_pair, run_once)
-from orzeczenia.store import RunResult, Store                         # noqa: E402
+from orzeczenia.store import RunResult, Store, _MAX_SEARCH_CHARS, _search_text  # noqa: E402
 
 failures: list[str] = []
 
@@ -423,6 +423,20 @@ with tempfile.TemporaryDirectory() as tmp:
          [a["title"] for a in rows],
          ["Najnowszy", "Srodkowy", "Bez daty ogloszenia"])
     store.close()
+
+# ----------------------------------------------------------------------
+print("\n== _search_text / _akt_search_text: ograniczenie dlugosci dla tsvector ==")
+# Postgres ma twardy limit rozmiaru tsvector (1 048 575 bajtow) - obszerne
+# dokumenty (np. kilkusetstronicowy kodeks) go przekraczaly i wywalaly caly
+# import bledem ProgramLimitExceeded - sprawdzone na zywo (backfill aktow
+# prawnych, /api/akty/wstecz, zwracal 500 przy kazdym przebiegu).
+huge = "a" * (_MAX_SEARCH_CHARS + 500_000)
+check("_search_text (orzeczenia) obcina do _MAX_SEARCH_CHARS",
+     len(_search_text({"signature": "I C 1/20", "full_text": huge})), _MAX_SEARCH_CHARS)
+check("_akt_search_text (akty prawne) obcina do _MAX_SEARCH_CHARS",
+     len(Store._akt_search_text({"title": "Ustawa", "full_text": huge})), _MAX_SEARCH_CHARS)
+check("krotki tekst NIE jest obcinany",
+     _search_text({"signature": "I C 1/20"}), "I C 1/20")
 
 # ----------------------------------------------------------------------
 print("\n== run_once: dociąganie starszego archiwum, gdy portal nic nowego nie ma ==")

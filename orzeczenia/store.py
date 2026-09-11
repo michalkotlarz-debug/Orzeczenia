@@ -195,12 +195,25 @@ def _doc_row(d: dict[str, Any]) -> tuple:
     )
 
 
+# Postgres ma twardy limit rozmiaru tsvector (1 048 575 bajtów) - obszerne
+# dokumenty (kilkusetstronicowe kodeksy wśród aktów prawnych) go przekraczają
+# i wywalają CAŁY insert/update błędem `ProgramLimitExceeded: string is too
+# long for tsvector` - sprawdzone na żywo: to psuło import wsadowy aktów
+# (endpoint `/api/akty/wstecz` kończył się 500 przy KAŻDYM przebiegu, a
+# nieuwolniona blokada `_akty_lock` przy tym wyjątku dodatkowo blokowała
+# codzienny `/api/akty/obserwuj` na kilka dni). Obcinamy tekst przekazywany
+# do `to_tsvector` do bezpiecznego limitu znaków - degraduje to wyszukiwanie
+# pełnotekstowe TYLKO dla fragmentu poza tym limitem, sam dokument (`full_text`)
+# zapisuje się bez żadnych obcięć.
+_MAX_SEARCH_CHARS = 500_000
+
+
 def _search_text(d: dict[str, Any]) -> str:
     """Tekst, z którego Postgres buduje `search_vector` (polska konfiguracja FTS)."""
     parts = [d.get("signature"), d.get("court"), d.get("division"), d.get("chairman"),
              d.get("legal_basis"), " ".join(d.get("thematic") or []),
              d.get("sentencja"), d.get("uzasadnienie"), d.get("full_text")]
-    return " ".join(p for p in parts if p)
+    return " ".join(p for p in parts if p)[:_MAX_SEARCH_CHARS]
 
 
 @dataclass
@@ -893,9 +906,12 @@ class Store:
 
     @staticmethod
     def _akt_search_text(d: dict[str, Any]) -> str:
+        # Patrz uwaga przy _MAX_SEARCH_CHARS (moduł) - bez tego ograniczenia
+        # obszerne kodeksy (kilkaset stron) wywalały cały import błędem
+        # Postgresa `string is too long for tsvector`.
         parts = [d.get("title"), d.get("act_type"), d.get("status"),
                  " ".join(d.get("keywords") or []), d.get("full_text")]
-        return " ".join(p for p in parts if p)
+        return " ".join(p for p in parts if p)[:_MAX_SEARCH_CHARS]
 
     def known_akty(self, publisher: str, year: int, positions: Iterable[int]) -> set[int]:
         pos = list(dict.fromkeys(int(p) for p in positions))
