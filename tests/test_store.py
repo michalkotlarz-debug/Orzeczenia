@@ -4,6 +4,7 @@ Bez sieci - wszystko na tymczasowej bazie SQLite, tak jak reszta zestawu.
 """
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -526,6 +527,72 @@ with tempfile.TemporaryDirectory() as tmp:
     check("zaden wariant nie pasuje -> pusto",
          store.search_by_legal_basis_terms(["k.p.a."])[1], 0)
     check("pusta lista terminow -> pusto", store.search_by_legal_basis_terms([]), ([], 0))
+    store.close()
+
+# ----------------------------------------------------------------------
+print("\n== indeks hasel: jedno haslo mimo roznej pisowni w portalu ==")
+with tempfile.TemporaryDirectory() as tmp:
+    store = Store(f"sqlite:///{Path(tmp) / 'hasla.db'}", 30)
+    warianty = [["Emerytura Wcześniejsza"], ["Emerytura wcześniejsza"],
+                ["Tym. Ar. Lub Zatrzym."], ["Tymczasowe Aresztowanie Lub Zatrzymanie"],
+                ['"Ustawa Lutowa"'], ["Kary Pieniężne URE"], ["Kary Pieniężne UKE"],
+                ["Emerytura Wcześniejsza", "Emerytura wcześniejsza"]]
+    for i, thematic in enumerate(warianty):
+        store._run(
+            "INSERT INTO orzeczenia (source, doc_id, thematic, source_url, "
+            "first_seen_at, last_seen_at) VALUES (?,?,?,?,?,?)",
+            ("ms", f"h{i}", json.dumps(thematic, ensure_ascii=False), "",
+             "2026-09-12", "2026-09-12"))
+
+    liczniki = {h["name"]: h["count"] for h in store.thematic_counts()}
+    check("dwie pisownie tego samego hasla daja jeden wpis",
+         liczniki.get("Emerytura wcześniejsza"), 3)
+    check("dokument z OBIEMA pisowniami liczy sie raz, nie dwa",
+         sum(1 for name in liczniki if name.lower().startswith("emerytura")), 1)
+    check("skrot laczy sie z pelna nazwa",
+         liczniki.get("Tymczasowe aresztowanie lub zatrzymanie"), 2)
+    check("cudzyslowy zdjete - haslo trafia pod wlasna litere",
+         "Ustawa lutowa" in liczniki, True)
+    check("URE i UKE zostaja osobnymi haslami (rozne urzedy)",
+         sorted(n for n in liczniki if n.startswith("Kary")),
+         ["Kary pieniężne UKE", "Kary pieniężne URE"])
+
+    podglad = store.renormalize_thematic()
+    check("podglad niczego nie zapisuje", podglad["zapisanych"], 0)
+    check("podglad widzi wiersze do poprawy", podglad["do_zmiany"] > 0, True)
+    zapis = store.renormalize_thematic(apply=True)
+    check("migracja zapisala wszystkie wykryte wiersze",
+         zapis["zapisanych"], podglad["do_zmiany"])
+    check("migracja idempotentna - drugi przebieg nic nie rusza",
+         store.renormalize_thematic(apply=True)["do_zmiany"], 0)
+    check("liczniki po migracji identyczne jak przed",
+         {h["name"]: h["count"] for h in store.thematic_counts()}, liczniki)
+    store.close()
+
+# ----------------------------------------------------------------------
+print("\n== hierarchia hasel: licznik galezi liczy rozne orzeczenia ==")
+with tempfile.TemporaryDirectory() as tmp:
+    store = Store(f"sqlite:///{Path(tmp) / 'drzewo.db'}", 30)
+    # t3 ma OBA hasła naraz - w liczniku gałęzi ma się pojawić raz, nie dwa razy.
+    for doc_id, thematic in [("t1", ["Emerytura"]), ("t2", ["Emerytura pomostowa"]),
+                             ("t3", ["Emerytura", "Emerytura pomostowa"]),
+                             ("t4", ["Zasiedzenie"])]:
+        store._run(
+            "INSERT INTO orzeczenia (source, doc_id, thematic, source_url, "
+            "first_seen_at, last_seen_at) VALUES (?,?,?,?,?,?)",
+            ("ms", doc_id, json.dumps(thematic, ensure_ascii=False), "",
+             "2026-09-12", "2026-09-12"))
+
+    tree = store.thematic_tree()
+    emerytura = next(n for n in tree if n["name"] == "Emerytura")
+    check("wlasny licznik hasla nadrzednego", emerytura["count"], 2)
+    check("podkategoria ma swoj licznik", emerytura["children"][0]["count"], 2)
+    check("licznik galezi liczy ROZNE orzeczenia (2+2, ale t3 wspolne -> 3)",
+         emerytura["total"], 3)
+    check("haslo bez podkategorii ma total rowny wlasnemu licznikowi",
+         [(n["total"], n["count"]) for n in tree if n["name"] == "Zasiedzenie"], [(1, 1)])
+    check("hierarchia nie wciaga haseł o innym rdzeniu",
+         [n["name"] for n in tree], ["Emerytura", "Zasiedzenie"])
     store.close()
 
 # ----------------------------------------------------------------------

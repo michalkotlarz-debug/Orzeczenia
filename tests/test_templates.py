@@ -163,13 +163,25 @@ try:
            opis="serwis chwilowo ogranicza zapytania (pokazał CAPTCHA).")
 
     h = render("hasla.html", "11-hasla.html",
-               hasla=[{"name": "Alimenty", "count": 12, "letter": "A"},
-                      {"name": "Kara", "count": 5, "letter": "K"}],
+               hasla=[{"name": "Alimenty", "count": 12, "total": 12, "letter": "A",
+                       "children": []},
+                      {"name": "Kara", "count": 5, "total": 80, "letter": "K", "children": [
+                          {"name": "Kara umowna", "count": 74, "letter": "K"},
+                          {"name": "Kara porządkowa", "count": 3, "letter": "K"}]}],
                available_letters=["A", "K"])
     assert "hasla-search-input" in h, "brak pola wyszukiwania"
     assert 'data-letter="A"' in h, "brak atrybutu litery na haśle"
     assert h.count('class="letter"') == 2, "tylko litery z hasłami (A, K) powinny się pokazać"
     assert '>B<' not in h, "litera bez hasła nie powinna w ogóle się renderować"
+    assert "hasla-group" in h, "hasło z podkategoriami ma być rozwijalną grupą"
+    assert h.count("data-child-name") == 3, "dwie podkategorie + link do samego hasła nadrzędnego"
+    assert "Kara umowna" in h and "+2" in h, "brak podkategorii albo ich licznika"
+    assert ">80<" in h, "nagłówek grupy pokazuje licznik całej gałęzi (total), nie własny"
+    assert ">5<" in h, "własny licznik hasła nadrzędnego widoczny przy 'tylko …'"
+    assert 'data-name="kara kara umowna kara porządkowa"' in h, \
+        "szukanie po nazwie podkategorii ma trafiać w grupę"
+    assert "<details" in h and h.count("hasla-entry") == 2, \
+        "Alimenty bez dzieci zostaje zwykłym linkiem, Kara staje się grupą"
 
     render("hasla.html", "12-hasla-pusto.html", hasla=[], available_letters=[])
     reg.close()

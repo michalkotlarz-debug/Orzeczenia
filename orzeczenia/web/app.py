@@ -402,13 +402,18 @@ _POLSKI_ALFABET = list("AĄBCĆDEĘFGHIJKLŁMNŃOÓPQRSŚTUVWXYZŹŻ")
 @app.get("/hasla", response_class=HTMLResponse)
 def hasla_page(request: Request):
     store = get_store()
-    hasla = sorted(store.thematic_counts(), key=lambda h: h["name"].lower()) if store else []
+    hasla = store.thematic_tree() if store else []
     for h in hasla:
         # Pierwsza LITERA w nazwie, nie pierwszy znak - część haseł ma na
         # początku cudzysłów albo inny znak interpunkcyjny (np. dosłowne
         # `"Ustawa Lutowa"` w bazie) i bez tego trafiały pod osobny,
         # bezsensowny przycisk `"` zamiast pod swoją prawdziwą literę.
         h["letter"] = next((c.upper() for c in h["name"] if c.isalpha()), "#")
+        # Podkategoria dziedziczy literę kategorii, bo w indeksie siedzi pod nią -
+        # bez tego filtr literowy rozrywałby grupę (np. "Emerytura pomostowa"
+        # znikałaby z litery E przy wybranym "P").
+        for child in h.get("children", ()):
+            child["letter"] = h["letter"]
     # Kilka liter nie ma sensu jako osobne przyciski nawigacji (obce w
     # polskim alfabecie na początku wyrazu albo prawie nigdy nie występujące
     # jako pierwsza litera hasła) - na wyraźne życzenie usunięte z paska

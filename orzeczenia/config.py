@@ -111,7 +111,12 @@ def _sub(cls, raw: dict[str, Any] | None, **defaults):
 
 
 def load_config(path: str | Path | None = None) -> Config:
-    p = Path(path) if path else DEFAULT_CONFIG_PATH
+    # ORZECZNIK_CONFIG czytany przy każdym wywołaniu, nie raz przy imporcie
+    # modułu: `cli serve --config X` ustawia tę zmienną dopiero po zaimportowaniu
+    # config.py, a aplikacja webowa woła load_config() bez argumentu już po
+    # starcie uvicorna - przy stałej modułowej opcja --config po cichu nic nie
+    # robiła i serwis czytał zawsze domyślny config.yaml.
+    p = Path(path) if path else Path(os.environ.get("ORZECZNIK_CONFIG", "config.yaml"))
     raw: dict[str, Any] = {}
     if p.exists():
         raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}

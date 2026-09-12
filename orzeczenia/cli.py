@@ -285,6 +285,32 @@ def scal_duplikaty(
                f"pominiętych (niejednoznacznych): {stats['pominietych_niejednoznacznych']}")
 
 
+@app.command("normalizuj-hasla")
+def normalizuj_hasla(
+    zapisz: bool = typer.Option(False, "--zapisz",
+                                help="Bez tej flagi tylko podgląd, nic nie zapisuje"),
+    config: Path = typer.Option("config.yaml", "--config", "-c"),
+):
+    """Jednorazowe wsteczne porządkowanie haseł tematycznych: sprowadza pisownię
+    do jednej postaci kanonicznej, żeby "Emerytura Wcześniejsza" i "Emerytura
+    wcześniejsza" przestały być dwoma osobnymi wpisami w indeksie /hasla.
+    Nowe dokumenty są normalizowane już przy zapisie. Bezpieczne uruchomić
+    wielokrotnie."""
+    from .store import Store
+    cfg = load_config(config)
+    store = Store(cfg.store.url, cfg.store.keep_days)
+    try:
+        przed = len({h["name"] for h in store.thematic_counts()})
+        stats = store.renormalize_thematic(apply=zapisz)
+        typer.echo(f"wierszy z hasłami: {stats['wierszy']}  "
+                   f"do zmiany: {stats['do_zmiany']}  zapisanych: {stats['zapisanych']}")
+        typer.echo(f"haseł w indeksie po scaleniu: {przed}")
+        if not zapisz and stats["do_zmiany"]:
+            typer.echo("to był tylko podgląd - uruchom z --zapisz, żeby wprowadzić zmiany")
+    finally:
+        store.close()
+
+
 @app.command("pokaz")
 def pokaz(doc_id: str, source: str = typer.Option("ms", "--source"),
           config: Path = typer.Option("config.yaml", "--config", "-c")):

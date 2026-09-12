@@ -179,13 +179,38 @@ main h2{font-size:17px;font-weight:650;letter-spacing:-.01em}
 .letter[data-letter=""]{font-family:inherit;font-weight:600}
 
 .hasla-index{columns:3;column-gap:28px}
-.hasla-item[hidden]{display:none}
+.hasla-item[hidden],.hasla-entry[hidden]{display:none}
 @media(max-width:860px){.hasla-index{columns:2}}
 @media(max-width:560px){.hasla-index{columns:1}}
 .hasla-item{display:flex;justify-content:space-between;gap:12px;padding:9px 0;
   border-bottom:1px solid var(--line-soft);break-inside:avoid;font-size:14px;color:var(--ink-soft)}
 .hasla-item:hover{color:var(--navy)}
 .hasla-item b{font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:500}
+
+/* Hasła w dwóch poziomach: szersze hasło rozwija węższe (Emerytura ->
+   Emerytura pomostowa). <details> daje rozwijanie bez JS-a; JS tylko otwiera
+   grupę, gdy fraza z wyszukiwarki trafiła w podkategorię. */
+.hasla-group{break-inside:avoid}
+.hasla-group>summary{cursor:pointer;list-style:none}
+.hasla-group>summary::-webkit-details-marker{display:none}
+.hasla-parent>span:first-child{position:relative;padding-left:15px}
+.hasla-parent>span:first-child::before{content:"";position:absolute;left:1px;top:.44em;
+  width:0;height:0;border-left:4px solid var(--muted);border-top:3.5px solid transparent;
+  border-bottom:3.5px solid transparent;transition:transform .15s ease}
+.hasla-group[open]>summary .hasla-parent>span:first-child::before,
+.hasla-group[open]>summary>span:first-child::before{transform:rotate(90deg)}
+.hasla-group>summary:hover{color:var(--navy)}
+.hasla-group>summary:hover>span:first-child::before{border-left-color:var(--navy)}
+.hasla-nums{display:inline-flex;align-items:center;gap:7px;flex:none}
+.hasla-more{font-family:var(--mono);font-size:10.5px;color:var(--navy);
+  background:var(--navy-soft);border-radius:999px;padding:1px 6px}
+.hasla-children{padding-left:15px;margin-bottom:4px;border-left:1px solid var(--line-soft)}
+.hasla-child{padding-left:10px;font-size:13.5px}
+/* Odsyłacz do samego hasła nadrzędnego ma reagować jak każda inna pozycja -
+   własny kolor na spanie blokowałby hover ustawiony na linku. Kursywa zostaje
+   jako jedyne odróżnienie, bo to węższe znaczenie niż nagłówek grupy. */
+.hasla-self{font-style:italic}
+a.hasla-item:hover{color:var(--navy);text-decoration:underline}
 
 /* ---------------- zakładki źródeł ---------------- */
 .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:20px;border-bottom:1px solid var(--line)}

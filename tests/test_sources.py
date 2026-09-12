@@ -16,7 +16,7 @@ from orzeczenia.http import SourceUnavailable, TTLCache, looks_blocked  # noqa: 
 from orzeczenia.parse.common import (clean_akt_html_text, clean_pdf_text,  # noqa: E402
                                      detect_doc_type,  # noqa: E402
                                      detect_doc_types, extract_panel, legal_basis_terms_for_akt,
-                                     normalize_signature, parse_date,
+                                     normalize_signature, normalize_thematic, parse_date,
                                      split_sentencja_uzasadnienie)
 from orzeczenia.sources.base import Query                            # noqa: E402
 from orzeczenia.sources.kio_uzp import KioSource                     # noqa: E402
@@ -423,6 +423,38 @@ check("ustawa NOWELIZUJACA kodeks karny -> None (to nie sam kodeks)",
 check("idempotentne (html) - drugie przejście nic już nie zmienia",
      clean_akt_html_text(clean_akt_html_text("Ministra Finansówz dnia 1 maja 2024 r.")),
      clean_akt_html_text("Ministra Finansówz dnia 1 maja 2024 r."))
+
+print("\n== normalize_thematic: jedna postac hasla niezaleznie od pisowni portalu ==")
+check("Title Case -> zdaniowa", normalize_thematic("Emerytura Wcześniejsza"),
+      "Emerytura wcześniejsza")
+check("zdaniowa zostaje bez zmian", normalize_thematic("Emerytura wcześniejsza"),
+      "Emerytura wcześniejsza")
+check("oba warianty daja ten sam wynik",
+      normalize_thematic("Emerytura Wcześniejsza"), normalize_thematic("emerytura wcześniejsza"))
+check("krotkie slowa lacznikowe na male ('W', 'Do', 'Z')",
+      normalize_thematic("Przestępstwo Przeciwko Bezpieczeństwu W Komunikacji"),
+      "Przestępstwo przeciwko bezpieczeństwu w komunikacji")
+check("akronim URE zachowany (URE i UKE to dwa rozne urzedy)",
+      normalize_thematic("Kary Pieniężne URE"), "Kary pieniężne URE")
+check("akronim w nawiasie zachowany",
+      normalize_thematic("Postępowanie Odwoławcze (KIO)"),
+      "Postępowanie odwoławcze (KIO)")
+check("skrot dopisany w nawiasie nie dzieli hasla na dwa",
+      normalize_thematic("Europejski Nakaz Aresztowania (ENA)"),
+      normalize_thematic("Europejski Nakaz Aresztowania"))
+check("cudzyslowy zdjete (inaczej haslo ladowalo pod litera \")",
+      normalize_thematic('"Ustawa Lutowa"'), "Ustawa lutowa")
+check("skrot rozwiniety do pelnej nazwy",
+      normalize_thematic("Tym. Ar. Lub Zatrzym."), "Tymczasowe aresztowanie lub zatrzymanie")
+check("skrot i pelna forma zbiegaja sie w jednym hasle",
+      normalize_thematic("Odszk. Za Niesłuszne Skaz."),
+      normalize_thematic("Odszkodowanie Za Niesłuszne Skazanie"))
+check("nadmiarowe spacje sciesniete", normalize_thematic("  Dobra   Osobiste  "),
+      "Dobra osobiste")
+check("puste wejscie -> pusty string", normalize_thematic(None), "")
+check("idempotentne - drugie przejscie nic nie zmienia",
+      normalize_thematic(normalize_thematic("Tym. Ar. Lub Zatrzym.")),
+      normalize_thematic("Tym. Ar. Lub Zatrzym."))
 
 reg.close()
 print("\n" + "=" * 62)

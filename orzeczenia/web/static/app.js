@@ -215,7 +215,7 @@
     var haslaSearch = document.getElementById("hasla-search-input");
     var haslaNav = document.getElementById("hasla-letter-nav");
     var haslaEmpty = document.getElementById("hasla-empty");
-    var items = Array.prototype.slice.call(haslaList.querySelectorAll(".hasla-item"));
+    var items = Array.prototype.slice.call(haslaList.querySelectorAll(".hasla-entry"));
 
     function setActiveLetter(letter) {
       haslaNav.querySelectorAll(".letter").forEach(function (b) {
@@ -234,6 +234,19 @@
         var show = matchesLetter && matchesQuery;
         item.hidden = !show;
         if (show) visible++;
+        /* Grupa pasuje także wtedy, gdy fraza trafiła tylko w podkategorię -
+           rozwijamy ją wtedy sama i chowamy rodzeństwo, które nie pasuje,
+           żeby nie trzeba było szukać wzrokiem wśród dwudziestu pozycji. */
+        if (show && item.tagName === "DETAILS") {
+          var children = item.querySelectorAll(".hasla-child");
+          var ownMatch = !query || item.querySelector(".hasla-parent span")
+            .textContent.toLowerCase().indexOf(query) !== -1;
+          children.forEach(function (child) {
+            child.hidden = !!query && !ownMatch &&
+              child.getAttribute("data-child-name").indexOf(query) === -1;
+          });
+          item.open = !!query && !ownMatch;
+        }
       });
       if (haslaEmpty) haslaEmpty.hidden = visible !== 0;
     }

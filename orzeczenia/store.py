@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 from urllib.parse import urlparse
 
-from .parse.common import squash
+from .parse.common import normalize_thematic, squash
 from .sources.base import Hit
 
 log = logging.getLogger("orzecznik.store")
@@ -197,7 +197,7 @@ def _doc_row(d: dict[str, Any]) -> tuple:
         _as_iso_date(d.get("judgment_date")), _as_iso_date(d.get("publication_date")),
         d.get("outcome"), d.get("purchaser"), excerpt,
         json.dumps(names, ensure_ascii=False),
-        json.dumps(d.get("thematic") or [], ensure_ascii=False),
+        _thematic_json(d.get("thematic")),
         d.get("chairman"), d.get("legal_basis"), d.get("importance"),
         d.get("sentencja"), d.get("uzasadnienie"), d.get("full_text"),
         json.dumps(judges, ensure_ascii=False),
@@ -216,6 +216,75 @@ def _doc_row(d: dict[str, Any]) -> tuple:
 # pełnotekstowe TYLKO dla fragmentu poza tym limitem, sam dokument (`full_text`)
 # zapisuje się bez żadnych obcięć.
 _MAX_SEARCH_CHARS = 500_000
+
+
+def _thematic_json(values: Iterable[str] | None) -> str:
+    """Lista haseł tematycznych w postaci kanonicznej, bez powtórzeń i z zachowaną
+    kolejnością. Dokument potrafi mieć oba warianty tego samego hasła naraz
+    ("Emerytura Wcześniejsza" i "Emerytura wcześniejsza") - po normalizacji byłyby
+    identyczne i liczyłyby się podwójnie w indeksie."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values or []:
+        name = normalize_thematic(value)
+        if name and name not in seen:
+            seen.add(name)
+            out.append(name)
+    return json.dumps(out, ensure_ascii=False)
+
+
+def _is_thematic_parent(parent: str, child: str) -> bool:
+    """Czy `parent` jest szerszym hasłem dla `child`? Granica musi wypaść na
+    całym słowie albo na myślniku rozdzielającym podkategorię - inaczej "Renta"
+    byłaby rodzicem dla "Rentowność", a "Umowa" dla "Umowy międzynarodowe"."""
+    if len(child) <= len(parent) or not child.lower().startswith(parent.lower()):
+        return False
+    return child[len(parent):].startswith((" - ", " – ", " "))
+
+
+def build_thematic_tree(hasla: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Płaską listę haseł układa w dwa poziomy: hasło szersze zbiera pod sobą
+    wszystkie węższe, które się od niego zaczynają ("Emerytura" -> "Emerytura
+    pomostowa", "Świadczenie emerytalno-rentowe" -> "... - zbieg").
+
+    Hierarchia jest wyliczana z samych nazw, więc nie wymaga utrzymywania
+    osobnego słownika kategorii - nowe hasło z portalu trafia pod swoją kategorię
+    samo. Poziomy głębsze niż dwa są spłaszczane do korzenia: w interfejsie
+    liczy się rozwijana lista, nie pełne drzewo.
+
+    Liczniki nie są sumowane w górę - kategoria pokazuje swoją własną liczbę
+    orzeczeń, a obok liczbę podkategorii. Sumowanie wprowadzałoby w błąd, bo
+    orzeczenie ma zwykle oba hasła naraz i liczyłoby się podwójnie."""
+    by_name = {h["name"]: h for h in hasla}
+    parent_of: dict[str, str] = {}
+    for name in by_name:
+        best = ""
+        for candidate in by_name:
+            if candidate != name and len(candidate) > len(best) \
+                    and _is_thematic_parent(candidate, name):
+                best = candidate
+        if best:
+            parent_of[name] = best
+
+    def root(name: str) -> str:
+        seen = {name}
+        while (up := parent_of.get(name)) and up not in seen:
+            name = up
+            seen.add(name)
+        return name
+
+    tree: list[dict[str, Any]] = []
+    children: dict[str, list[dict[str, Any]]] = {}
+    for name, h in by_name.items():
+        top = root(name)
+        if top == name:
+            tree.append({**h, "children": children.setdefault(name, [])})
+        else:
+            children.setdefault(top, []).append(h)
+
+    for node in tree:
+        node["children"].sort(key=lambda c: c["name"].lower())
+    return sorted(tree, key=lambda h: h["name"].lower())
 
 
 def _search_text(d: dict[str, Any]) -> str:
@@ -447,7 +516,7 @@ class Store:
                     _as_iso_date(h.judgment_date), _as_iso_date(h.publication_date),
                     h.outcome, h.excerpt,
                     json.dumps(h.panel, ensure_ascii=False),
-                    json.dumps(h.thematic, ensure_ascii=False),
+                    _thematic_json(h.thematic),
                     h.source_url, now, now))
             if fresh:
                 cols = ", ".join(COLUMNS)
@@ -758,10 +827,72 @@ class Store:
                 values = json.loads(r["thematic"] or "[]")
             except (TypeError, ValueError):
                 continue
-            for v in values:
-                if v:
-                    counts[v] += 1
+            # Normalizacja także tutaj, nie tylko przy zapisie: wiersze sprzed
+            # migracji trzymają jeszcze surową pisownię z portalu, a indeks ma
+            # pokazywać jedno hasło niezależnie od tego, kiedy dokument wpadł do
+            # bazy. Po migracji jest to operacja tożsamościowa.
+            names = {normalize_thematic(v) for v in values if v}
+            for name in names:
+                if name:
+                    counts[name] += 1
         return [{"name": name, "count": n} for name, n in counts.items()]
+
+    def thematic_tree(self) -> list[dict[str, Any]]:
+        """Hasła w dwóch poziomach (patrz `build_thematic_tree`), gdzie kategoria
+        dostaje dodatkowo `total` - liczbę RÓŻNYCH orzeczeń w całej swojej gałęzi.
+
+        `total` nie jest sumą liczników podkategorii, bo orzeczenie potrafi mieć
+        naraz hasło szersze i węższe ("Emerytura" + "Emerytura wcześniejsza") i
+        w sumie liczyłoby się dwa razy. Dla gałęzi "Emerytura": własnych 521,
+        suma podkategorii dałaby 1061, a różnych orzeczeń jest 1047."""
+        rows = self._rows("SELECT id, thematic FROM orzeczenia "
+                          "WHERE thematic IS NOT NULL AND thematic != '[]'")
+        docs: dict[str, set[Any]] = {}
+        for r in rows:
+            try:
+                values = json.loads(r["thematic"] or "[]")
+            except (TypeError, ValueError):
+                continue
+            for name in {normalize_thematic(v) for v in values if v}:
+                if name:
+                    docs.setdefault(name, set()).add(r["id"])
+
+        tree = build_thematic_tree(
+            [{"name": name, "count": len(ids)} for name, ids in docs.items()])
+        for node in tree:
+            branch: set[Any] = set(docs.get(node["name"], ()))
+            for child in node["children"]:
+                branch |= docs.get(child["name"], set())
+            node["total"] = len(branch)
+        return tree
+
+    def renormalize_thematic(self, *, apply: bool = False,
+                             batch: int = 500) -> dict[str, Any]:
+        """Przelicza `thematic` w już zapisanych wierszach na postać kanoniczną
+        (`normalize_thematic`). Potrzebne raz, po wprowadzeniu normalizacji przy
+        zapisie: bez tego indeks /hasla pokazywałby scalone liczniki, a klik w
+        hasło trafiałby filtrem `ILIKE` tylko w część wierszy - np. skrót
+        "Tym. Ar. Lub Zatrzym." nie pasuje do pełnej nazwy.
+
+        Bez `apply` tylko raportuje, ile wierszy by się zmieniło. Idempotentne -
+        ponowne uruchomienie (także po przerwaniu w połowie) nic już nie ruszy."""
+        rows = self._rows("SELECT id, thematic FROM orzeczenia "
+                          "WHERE thematic IS NOT NULL AND thematic != '[]'")
+        zmiany: list[tuple[str, Any]] = []
+        for r in rows:
+            try:
+                values = json.loads(r["thematic"] or "[]")
+            except (TypeError, ValueError):
+                continue
+            nowy = _thematic_json(values)
+            if nowy != (r["thematic"] or ""):
+                zmiany.append((nowy, r["id"]))
+        if apply:
+            for i in range(0, len(zmiany), batch):
+                self._run("UPDATE orzeczenia SET thematic = ? WHERE id = ?",
+                          zmiany[i:i + batch], many=True)
+        return {"wierszy": len(rows), "do_zmiany": len(zmiany),
+                "zapisanych": len(zmiany) if apply else 0}
 
     def search_by_legal_basis_terms(self, terms: list[str],
                                     limit: int = 6) -> tuple[list[dict[str, Any]], int]:

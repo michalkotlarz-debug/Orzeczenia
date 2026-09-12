@@ -349,6 +349,106 @@ def normalize_person(name: str) -> str:
     return strip_accents(squash(name).lower())
 
 
+# Hasła tematyczne przychodzą z portalu w dwóch konwencjach naraz - "Emerytura
+# Wcześniejsza" (241 wystąpień) i "Emerytura wcześniejsza" (129) to dla portalu
+# dwa osobne hasła, przez co indeks /hasla dzielił jedno pojęcie na dwa wpisy z
+# połową licznika każdy. Na produkcji dotyczyło to 365 z 1195 haseł.
+# Rozwiązanie: jedna forma kanoniczna liczona przy zapisie, zdaniowa (poprawna
+# polszczyzna dla nazw pospolitych), z zachowaniem akronimów.
+_THEMATIC_QUOTES = "\"'„”»«"
+
+# Warianty tego samego hasła sprowadzane do jednej nazwy. Klucz: hasło po
+# normalizacji wielkości liter, sprowadzone do małych. Wszystkie pozycje
+# potwierdzone na danych produkcyjnych - obie strony każdej pary faktycznie
+# występują w bazie, więc nic tu nie jest zgadywane "na zapas".
+_THEMATIC_CANONICAL = {
+    # --- skróty zapisane przez portal zamiast pełnej nazwy ---
+    "tym. ar. lub zatrzym.": "Tymczasowe aresztowanie lub zatrzymanie",
+    "odszk. za niesłuszne skaz.": "Odszkodowanie za niesłuszne skazanie",
+
+    # --- liczba mnoga -> pojedyncza (wygenerowane regułą, patrz niżej) ---
+    # Reguła: w grupie haseł o tym samym rdzeniu wygrywa wariant, w którym
+    # PIERWSZE różniące się słowo (rzeczownik główny) ma końcówkę liczby
+    # pojedynczej. Wynik przejrzany ręcznie przed wpisaniem.
+    "przestępstwa przeciwko mieniu": "Przestępstwo przeciwko mieniu",
+    "przestępstwa przeciwko życiu": "Przestępstwo przeciwko życiu",
+    "przestępstwa przeciwko zdrowiu": "Przestępstwo przeciwko zdrowiu",
+    "przestępstwa przeciwko wolności": "Przestępstwo przeciwko wolności",
+    "przestępstwa przeciwko porządkowi publicznemu":
+        "Przestępstwo przeciwko porządkowi publicznemu",
+    "przestępstwa gospodarcze": "Przestępstwo gospodarcze",
+    "składki na ubezpieczenia społeczne": "Składki na ubezpieczenie społeczne",
+    "ubezpieczenia społeczne": "Ubezpieczenie społeczne",
+    "świadczenia przedemerytalne": "Świadczenie przedemerytalne",
+    "kary umowne": "Kara umowna",
+    "szkody górnicze": "Szkoda górnicza",
+    "szkody na osobie": "Szkoda na osobie",
+    "terminy": "Termin",
+    "dowody (przepisy ogólne)": "Dowód (przepisy ogólne)",
+
+    # --- literówki portalu (jeden wariant jest po prostu błędny) ---
+    "renta z tytułu niezdolności do pracy w związku z choroba zawodową":
+        "Renta z tytułu niezdolności do pracy w związku z chorobą zawodową",
+    "podstawa wymiary składek": "Podstawa wymiaru składki",
+    "podstawa wymiaru składek": "Podstawa wymiaru składki",
+    "nienależne wykonanie umowy": "Nienależyte wykonanie umowy",
+
+    # --- pisownia ---
+    "przestępstwa karnoskarbowe": "Przestępstwo karno-skarbowe",
+    "przestępstwa karno-skarbowe": "Przestępstwo karno-skarbowe",
+    "europejski nakaz aresztowania (ena)": "Europejski nakaz aresztowania",
+
+    # --- węższe hasła wchłonięte przez szersze (decyzja redakcyjna) ---
+    "zatrzymanie": "Tymczasowe aresztowanie lub zatrzymanie",
+    "tymczasowe aresztowanie": "Tymczasowe aresztowanie lub zatrzymanie",
+}
+
+
+# Skrótowce, które portal zapisuje raz wielkimi ("Ubezpieczenie OC", 56 razy),
+# a raz w Title Case ("Ubezpieczenie Oc", 17 razy). Bez tej listy druga pisownia
+# zostałaby sprowadzona do "oc" i rozjechałaby się z pierwszą - a przy URE/UKE
+# (dwa różne urzędy) wielkość liter niesie realną treść.
+_THEMATIC_ACRONYMS = {
+    "oc", "ac", "ure", "uke", "zus", "krus", "rp", "ena", "krs", "nfz",
+    "vat", "pit", "cit", "bhp", "sn", "nsa", "tk", "tsue", "ue", "pfron",
+}
+
+
+def _acronym_form(word: str) -> str | None:
+    """Skrótowiec do zachowania wielkimi literami, albo None. Rozpoznaje zarówno
+    zapis oryginalny (UKE), jak i zniekształcony przez portal (Uke)."""
+    core = word.strip(_THEMATIC_QUOTES + "().,;:-–—")
+    letters = [c for c in core if c.isalpha()]
+    if len(letters) < 2:
+        return None
+    if all(c.isupper() for c in letters) or core.lower() in _THEMATIC_ACRONYMS:
+        return word.replace(core, core.upper())
+    return None
+
+
+def normalize_thematic(name: str | None) -> str:
+    """Kanoniczna postać hasła tematycznego: jedna wielka litera na początku,
+    akronimy nietknięte, bez otaczających cudzysłowów (portal zapisuje część
+    haseł jako `"Ustawa Lutowa"`, przez co w indeksie lądowały pod literą `"`
+    zamiast pod `U`). Rozwija też jednoznaczne skróty - patrz `_THEMATIC_ABBREV`."""
+    text = squash(name)
+    if not text:
+        return ""
+    text = squash(text.strip(_THEMATIC_QUOTES))
+    if not text:
+        return ""
+    words = [_acronym_form(w) or w.lower() for w in text.split(" ")]
+    text = " ".join(words)
+    for i, char in enumerate(text):
+        if char.isalpha():
+            text = text[:i] + char.upper() + text[i + 1:]
+            break
+    # Słownik sprawdzany DOPIERO po ujednoliceniu wielkości liter - dzięki temu
+    # jeden wpis obsługuje wszystkie pisownie wariantu, zamiast po jednym kluczu
+    # na "Kary Umowne", "Kary umowne" i "kary umowne".
+    return _THEMATIC_CANONICAL.get(text.lower(), text)
+
+
 SINGLE_ROLES = [
     ("przewodniczący", re.compile(
         r"przewodnicz[ąa]c[yaąe]{1,2}\s*(?:sk[łl]adowi|sk[łl]adu)?\s*[:\-–]?\s*([^\n;]{3,120})",

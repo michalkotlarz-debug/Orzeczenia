@@ -29,7 +29,12 @@ $SSH "$HOST" "
   rm orzeczenia-src.tar.gz
   sudo docker build -t orzecznik:latest .
   sudo docker rm -f orzecznik || true
-  sudo docker run -d --name orzecznik --network host --restart unless-stopped --env-file .env orzecznik:latest
+  # Limit pamieci: import aktow parsuje PDF-y w tym samym procesie co serwer WWW
+  # i potrafi urosnac do ~3 GB. Bez limitu przepelnienie bylo globalnym OOM-em,
+  # ktory zabijal procesy w calym systemie (takze baze i zadania wsadowe obok).
+  # Z limitem przepelnienie ubija wylacznie ten kontener, a --restart go podnosi.
+  sudo docker run -d --name orzecznik --network host --restart unless-stopped \
+    -m 1500m --memory-swap 1500m --env-file .env orzecznik:latest
   sleep 3
   echo '--- health check ---'
   curl -s http://127.0.0.1:8000/api/health

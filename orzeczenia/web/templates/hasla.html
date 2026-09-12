@@ -24,11 +24,44 @@
 
   <div class="hasla-index" id="hasla-list">
     {% for h in hasla %}
-    <a class="hasla-item" href="/szukaj?thematic={{ h.name|urlencode }}"
+    {% if h.children %}
+    {# Hasło szersze zbiera pod sobą węższe (Emerytura -> Emerytura pomostowa).
+       data-name obejmuje też nazwy podkategorii, żeby szukanie po "pomostowa"
+       pokazało grupę, a nie fałszywie pusty wynik. #}
+    <details class="hasla-entry hasla-group" data-letter="{{ h.letter }}"
+             data-name="{{ (h.name ~ ' ' ~ h.children|map(attribute='name')|join(' '))|lower }}">
+      {# Licznik przy kategorii to liczba RÓŻNYCH orzeczeń w całej gałęzi (h.total),
+         nie suma podkategorii - orzeczenie z hasłem szerszym i węższym naraz
+         policzyłoby się dwa razy. Samo hasło nadrzędne ma swój licznik niżej. #}
+      <summary class="hasla-item hasla-parent">
+        <span>{{ h.name }}</span>
+        <span class="hasla-nums">
+          <b>{{ "{:,}".format(h.total).replace(",", " ") }}</b>
+          <span class="hasla-more">+{{ h.children|length }}</span>
+        </span>
+      </summary>
+      <div class="hasla-children">
+        <a class="hasla-item hasla-child" href="/szukaj?thematic={{ h.name|urlencode }}"
+           data-child-name="{{ h.name|lower }}">
+          <span class="hasla-self">tylko „{{ h.name }}”</span>
+          <b>{{ "{:,}".format(h.count).replace(",", " ") }}</b>
+        </a>
+        {% for c in h.children %}
+        <a class="hasla-item hasla-child" href="/szukaj?thematic={{ c.name|urlencode }}"
+           data-child-name="{{ c.name|lower }}">
+          <span>{{ c.name }}</span>
+          <b>{{ "{:,}".format(c.count).replace(",", " ") }}</b>
+        </a>
+        {% endfor %}
+      </div>
+    </details>
+    {% else %}
+    <a class="hasla-entry hasla-item" href="/szukaj?thematic={{ h.name|urlencode }}"
        data-letter="{{ h.letter }}" data-name="{{ h.name|lower }}">
       <span>{{ h.name }}</span>
       <b>{{ "{:,}".format(h.count).replace(",", " ") }}</b>
     </a>
+    {% endif %}
     {% endfor %}
   </div>
   <div class="empty" id="hasla-empty" hidden>
