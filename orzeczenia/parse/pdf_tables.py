@@ -141,6 +141,14 @@ def _page_segments(page: Any) -> list[tuple[str, Any]]:
     return segments
 
 
+def _page_count(data: bytes) -> int:
+    import pdfplumber
+    from io import BytesIO
+
+    with pdfplumber.open(BytesIO(data)) as pdf:
+        return len(pdf.pages)
+
+
 def pdf_to_text_with_tables(data: bytes) -> str:
     """Jak `pdf_to_text()` w `sources/sejm_eli.py`, ale tabele wykrywa po
     geometrii i wstawia jako gotowe znaczniki `<table>` - każdy blok tabeli
@@ -149,25 +157,26 @@ def pdf_to_text_with_tables(data: bytes) -> str:
     akapit, a szablon (`akt.html`) mógł wyrenderować jako HTML, nie zwykły
     tekst.
 
-    UWAGA - `pdfplumber`/`pypdfium2` potrafią zostawiać sporo pamięci między
-    kolejnymi otwarciami dokumentu w tym samym, długo działającym procesie
-    (import wsadowy przechodzi przez setki/tysiące PDF-ów pod rząd) - bez
-    jawnego `flush_cache()` per strona i `gc.collect()` po każdym dokumencie
-    proces urósł na żywo do ~3 GB i padł zabity przez OOM (sprawdzone na
-    produkcji przy migracji ~6800 aktów). Oba wywołania są tanie i nie
-    zmieniają wyniku - tylko szybciej oddają pamięć."""
-    import gc
+    DLACZEGO DOKUMENT OTWIERAMY OSOBNO NA KAŻDĄ STRONĘ. Jedno otwarcie i pętla
+    po `pdf.pages` przecieka: zmierzone na M.P. 2021 poz. 235 (4,4 MB, 102
+    strony) pamięć rosła liniowo o ~20 MB na stronę i po 102 stronach proces
+    dobijał do 1,9 GB, gdzie zabijał go OOM-killer - razem z serwerem WWW, bo
+    to ten sam proces. Ani `page.flush_cache()`, ani `page.close()`, ani
+    `gc.collect()` tego nie zatrzymują: `pdf.pages` trzyma każdą wczytaną
+    stronę, a pod spodem zostają struktury pdfminera. Otwarcie dokumentu z
+    `pages=[n]` sprawia, że nie ma czego trzymać - ten sam plik przechodzi w
+    217 MB, płasko, niezależnie od liczby stron, i wyciąga komplet 65 tabel.
+    Koszt: ponowne przejście xref na każdą stronę, w praktyce ułamek sekundy."""
     import pdfplumber
     from io import BytesIO
 
     out: list[str] = []
-    with pdfplumber.open(BytesIO(data)) as pdf:
-        for page in pdf.pages:
+    for numer in range(1, _page_count(data) + 1):
+        with pdfplumber.open(BytesIO(data), pages=[numer]) as pdf:
+            page = pdf.pages[0]
             for kind, payload in _page_segments(page):
                 if kind == "text":
                     out.append(payload)
                 else:
                     out.append(TABLE_SENTINEL + table_to_html(payload))
-            page.flush_cache()
-    gc.collect()
     return "\n\n".join(out)

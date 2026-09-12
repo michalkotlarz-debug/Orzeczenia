@@ -7,9 +7,14 @@
 # nowy dokument - i nikt sie o tym nie dowiedzial, bo nic nie pilnowalo
 # postepu. Ten skrypt pilnuje.
 #
-# Alert wysylany jest raz na problem (flaga), kasowany gdy wszystko wraca do normy.
+# Alert wysylany jest raz na problem (flaga), kasowany gdy wszystko wraca do normy,
+# i PRZYPOMINANY co PRZYPOMNIENIE_H godzin, dopoki problem trwa. Przypomnienie
+# dopisane po awarii z 12.09.2026: skrypt poprawnie wykryl restarty kontenera i
+# wyslal alert o 15:20 UTC, po czym przez dwie godziny milczal, bo flaga blokuje
+# powtorki. Awaria, ktorej nikt nie tknal przez pol dnia, ma sie odzywac.
 
 FLAG=/home/deploy/orzeczenia/.import_alert_sent
+PRZYPOMNIENIE_H=6
 STATE=/home/deploy/orzeczenia/.import_restarts
 MAIL=michal.kotlarz@gmail.com
 PROBLEMY=""
@@ -62,12 +67,22 @@ fi
 
 # --- wyslanie -----------------------------------------------------------------
 if [ -n "$PROBLEMY" ]; then
+  # Wysylamy, gdy to nowy problem albo gdy poprzednia wiadomosc ma juz swoje lata.
+  WYSLAC=0
+  TEMAT="problem z pobieraniem danych"
   if [ ! -f "$FLAG" ]; then
+    WYSLAC=1
+  elif [ -n "$(find "$FLAG" -mmin +$((PRZYPOMNIENIE_H * 60)) 2>/dev/null)" ]; then
+    WYSLAC=1
+    TEMAT="problem TRWA od $(( ( $(date +%s) - $(stat -c %Y "$FLAG") ) / 3600 )) h"
+  fi
+  if [ "$WYSLAC" = 1 ]; then
     AKTY=$(sudo -u postgres psql orzecznik -At -c 'SELECT COUNT(*) FROM akty_prawne' 2>/dev/null)
     ORZ=$(sudo -u postgres psql orzecznik -At -c 'SELECT COUNT(*) FROM orzeczenia' 2>/dev/null)
     WOLNE=$(free -m | awk 'NR==2{print $7}')
-    printf "Subject: Orzecznik - problem z pobieraniem danych\n\nWykryte problemy:\n%b\nStan na teraz:\n- aktow prawnych w bazie: %s\n- orzeczen w bazie: %s\n- wolna pamiec: %s MB\n\nSerwer: 87.106.31.76 (portalorzeczen.pl)\nSprawdzone: %s\n\nCo warto zobaczyc najpierw:\n  sudo docker logs orzecznik --tail 50\n  tail -20 /home/deploy/orzeczenia/akty_wstecz.log\n  sudo dmesg -T | grep -i 'killed process' | tail\n" \
-      "$PROBLEMY" "$AKTY" "$ORZ" "$WOLNE" "$(date -u)" | msmtp "$MAIL"
+    printf "Subject: Orzecznik - %s\n\nWykryte problemy:\n%b\nStan na teraz:\n- aktow prawnych w bazie: %s\n- orzeczen w bazie: %s\n- wolna pamiec: %s MB\n\nSerwer: 87.106.31.76 (portalorzeczen.pl)\nSprawdzone: %s\n\nCo warto zobaczyc najpierw:\n  sudo docker logs orzecznik --tail 50\n  tail -20 /home/deploy/orzeczenia/akty_wstecz.log\n  sudo dmesg -T | grep -i 'killed process' | tail\n" \
+      "$TEMAT" "$PROBLEMY" "$AKTY" "$ORZ" "$WOLNE" "$(date -u)" | msmtp "$MAIL"
+    # Odswiezenie znacznika czasu = odliczanie do nastepnego przypomnienia.
     touch "$FLAG"
   fi
 else
