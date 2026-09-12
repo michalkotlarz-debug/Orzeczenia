@@ -5,7 +5,7 @@ tego trzeba było rekonstruować stan z trzech osobnych rozmów. Aktualizuj go
 przy każdej zmianie infrastruktury (nie kodu — kod dokumentuje się sam
 w commitach; ten plik dokumentuje **wdrożenie**).
 
-Ostatnia aktualizacja: 2026-09-05.
+Ostatnia aktualizacja: 2026-09-12.
 
 ## Produkcja
 
@@ -36,11 +36,16 @@ Ostatnia aktualizacja: 2026-09-05.
 ## Harmonogramy — prawdziwy crontab na VPS (`crontab -l` jako `deploy`)
 
 ```
-*/30 * * * *  run_obserwator.sh       # orzeczenia MS/KIO: nowosci + fallback archiwum
-*/30 * * * *  run_akty_wstecz.sh      # akty prawne: paczka cofania w archiwum (batch=300/dziennik)
+*/15 * * * *  run_obserwator.sh       # orzeczenia MS/KIO: nowosci + fallback archiwum
 17 6  * * *  run_akty_obserwuj.sh    # akty prawne: przyrost dzienny (nowe/zmienione)
 13 *  * * *  check_disk.sh           # co godzine: alert mailowy gdy <5GB wolnego miejsca
+*/20 * * * *  check_import.sh         # alert mailowy, gdy pobieranie danych stoi
+@reboot      run_akty_wstecz_loop.sh # akty prawne: ciagla petla cofania (batch=10)
 ```
+
+Cofanie aktow w archiwum nie chodzi juz z crona co 30 minut, tylko jako ciagla
+petla startowana przy `@reboot` (`while true; curl .../api/akty/wstecz?batch=10;
+sleep 3`). Paczka zeszla z 300 na 10 po awarii opisanej nizej.
 
 Wszystkie wołają lokalny endpoint aplikacji (`curl http://127.0.0.1:8000/api/...`)
 z tokenem z `.env` (`ORZECZNIK_POLL_TOKEN`), logują do
@@ -51,6 +56,32 @@ Oba endpointy obserwatorów (`/api/obserwator/uruchom`, `/api/akty/wstecz`,
 `/api/akty/obserwuj`) mają nieblokującą blokadę (`threading.Lock`) chroniącą
 przed nakładającymi się przebiegami — nakładające się wywołanie dostaje
 `HTTP 409` zamiast czekać w kolejce.
+
+## Pamięć — po awarii importu z 11–12.09.2026
+
+Import parsuje PDF-y **w tym samym procesie co serwer WWW**, więc jego pamięć
+jest pamięcią całej aplikacji. 11.09 wieczorem import trafił na M.P. 2021 poz. 414
+(13 MB, 311 stron, 775 czcionek): parser zjadał ponad 2,8 GB przy 3,8 GB RAM-u
+serwera, kernel ubijał procesy w całym systemie, kontener wstawał i brał ten sam
+akt od nowa. Przez dobę nie wszedł do bazy ani jeden nowy dokument — ani akt,
+ani orzeczenie — i nic o tym nie powiadamiało.
+
+Co z tego zostało na stałe:
+
+- **Kontener ma limit pamięci** `-m 2000m` (`deploy/vps-deploy.sh`). Przepełnienie
+  ubija wtedy tylko jego, a `--restart unless-stopped` go podnosi; wcześniej
+  globalny OOM zabierał ze sobą bazę i zadania wsadowe. Limit dobrany tak, by
+  przebieg importu się mieścił — przy 1500m ginął w połowie i do bazy nie
+  trafiało nic.
+- **PDF czytany strona po stronie** (`orzeczenia/sources/sejm_eli.py`), zamiast
+  całego dokumentu naraz: szczyt 127 MB zamiast 2860 MB na tym samym pliku.
+- **Progi rozmiaru** jako druga linia obrony: powyżej 8 MB bez wykrywania tabel,
+  powyżej 20 MB akt zapisywany bez treści zamiast blokowania kolejki.
+- **`check_import.sh` co 20 minut** (kopia w `deploy/`) — alert mailem na
+  michal.kotlarz@gmail.com, gdy kontener restartuje się w kółko, import nie
+  zwraca odpowiedzi, nic nie przybywa (akty >24 h, orzeczenia >72 h, bo sądy nie
+  publikują w weekendy) albo serwis nie odpowiada. Jeden alert na problem, drugi
+  mail po powrocie do normy.
 
 Alert dyskowy wysyła mail na **michal.kotlarz@gmail.com** przez Gmail SMTP
 (`msmtp`, hasło aplikacji w `~/.msmtprc`, uprawnienia 600) — tylko raz na
@@ -79,8 +110,8 @@ przekroczenie progu, resetuje się gdy miejsce wraca powyżej 5GB.
 | | Orzeczenia (MS/KIO) | Akty prawne (Sejm ELI API) |
 |---|---|---|
 | Tabela | `orzeczenia` | `akty_prawne` |
-| Import nowości | `run_obserwator.sh` (30 min) | `run_akty_obserwuj.sh` (dziennie 6:17) |
-| Import archiwum | wbudowany fallback w `run_once()` | `run_akty_wstecz.sh` (30 min, batch 300/dziennik) |
+| Import nowości | `run_obserwator.sh` (15 min) | `run_akty_obserwuj.sh` (dziennie 6:17) |
+| Import archiwum | wbudowany fallback w `run_once()` | `run_akty_wstecz_loop.sh` (ciągła pętla, batch 10/dziennik) |
 | Zakładka web | `/szukaj`, `/nowe` | `/akty`, `/akt/{publisher}/{rok}/{poz}` |
 | Zakres | Sądy powszechne + KIO | Dziennik Ustaw + Monitor Polski |
 | Treść | pełny tekst z portalu | tekst wyciągnięty z PDF/HTML (**oryginalne PDF-y NIE są przechowywane**) |
