@@ -117,6 +117,22 @@ button{font:inherit;cursor:pointer}
 .filters-toggle:hover{background:var(--panel);border-color:var(--line)}
 .filters-toggle .dot{width:7px;height:7px;border-radius:50%;background:var(--navy)}
 
+/* Pasek szybkich filtrów (strona główna) - nazywa filtry po imieniu zamiast chować
+   je za jednym przyciskiem. Wygląd pigułki wzorowany na .chip/.fchip, żeby nie
+   wprowadzać trzeciego języka wizualnego dla tego samego kształtu. */
+.quickbar{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.hero .quickbar{justify-content:center}
+.qchip{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:999px;
+  border:1px solid var(--line);background:transparent;color:var(--ink-soft);
+  font-size:13px;font-family:inherit}
+.qchip .ic{width:.9em;height:.9em;color:var(--muted)}
+.qchip:hover{border-color:var(--navy);color:var(--ink)}
+.qchip:hover .ic{color:var(--navy)}
+.qchip:focus-visible{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px var(--navy-soft)}
+.qchip.on{background:var(--navy-soft);border-color:transparent;color:var(--navy);font-weight:600}
+.qchip.on .ic{color:var(--navy)}
+.qchip.more{border-style:dashed;border-color:var(--navy);color:var(--navy)}
+
 .filters{margin-top:12px;padding:20px;background:var(--panel);border:1px solid var(--line);
   border-radius:var(--r);box-shadow:var(--shadow);text-align:left}
 .fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
@@ -146,12 +162,16 @@ main h2{font-size:17px;font-weight:650;letter-spacing:-.01em}
 .more{font-size:13.5px;color:var(--muted)}
 .more:hover{color:var(--ink)}
 
-/* ---------------- pasek liczników na stronie głównej ---------------- */
-.stat-bar{display:flex;gap:28px;flex-wrap:wrap}
-.stat{flex:1;min-width:160px;border-left:2px solid var(--navy);padding:2px 0 2px 14px}
-.stat b{display:block;font-family:var(--mono);font-size:22px;font-weight:600;color:var(--ink)}
-.stat span{font-size:12.5px;color:var(--muted)}
-.stat:hover b{color:var(--navy)}
+/* ---------------- liczniki wtopione w pas hero ----------------
+   Wcześniej była to osobna sekcja z własnym paddingiem i liczbami 22px w ramkach
+   z lewą kreską - mimo małej treści czytało się to jak drugi nagłówek strony.
+   Teraz jeden cichy wiersz domykający hero. */
+.hero-stats{margin:14px auto 0;font-size:12.5px;color:var(--muted);text-align:center}
+.hero-stats b{font-family:var(--mono);font-weight:600;color:var(--ink-soft)}
+.hero-stats a{color:inherit}
+.hero-stats a:hover{color:var(--navy)}
+.hero-stats a:hover b{color:var(--navy)}
+.hero-stats .sep{color:var(--line);margin:0 .5em}
 
 /* ---------------- dwie kolumny (orzeczenia / akty) na stronie głównej ---------------- */
 .cols2{display:grid;grid-template-columns:1fr 1fr;gap:36px}

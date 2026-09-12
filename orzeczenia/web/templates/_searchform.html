@@ -1,6 +1,9 @@
 {% from "_icons.html" import icon %}
 {% set Q = query|default(none) %}
 {% set has_adv = Q and (Q.signature or Q.judge or Q.thematic or Q.legal_basis or Q.court or Q.date_from or Q.date_to) %}
+{# Pasek chipow wlacza strona, ktora go chce (dzis: home). Bez tej flagi zostaje
+   dotychczasowy przycisk "Filtry" - patrz komentarz przy .quickbar nizej. #}
+{% set quick = quickfilters|default(false) %}
 <form class="searchform" action="/szukaj" method="get" autocomplete="off">
   <div class="searchbar">
     {{ icon('search', 'ic lead') }}
@@ -11,12 +14,40 @@
     <button type="submit">Szukaj</button>
   </div>
 
-  <button class="filters-toggle" type="button" data-filters-toggle aria-expanded="{{ 'true' if has_adv else 'false' }}">
+  {% if quick %}
+  {# Filtry bywaly niewidoczne dla kogos, kto jeszcze nie szukal - schowany przycisk
+     "Filtry" niczego nie zapowiadal. Chipy nazywaja je po imieniu i stawiaja kursor
+     od razu we wlasciwym polu. Panel zostaje ten sam, chipy go tylko otwieraja. #}
+  <div class="quickbar">
+    {% for label, field, ikona in [
+         ('Sąd', 'court', 'court'),
+         ('Hasło tematyczne', 'thematic', 'tag'),
+         ('Data', 'date_from', 'calendar'),
+         ('Podstawa prawna', 'legal_basis', 'gavel')] %}
+    {% set wartosc = (Q[field] if Q else '') or (Q.date_to if Q and field == 'date_from' else '') %}
+    <button class="qchip {% if wartosc %}on{% endif %}" type="button"
+            data-filters-open data-focus="{{ field }}"
+            aria-controls="filters-panel" aria-expanded="{{ 'true' if has_adv else 'false' }}">
+      {{ icon(ikona, 'ic') }}
+      {# Wartosc w etykiecie, zeby stan filtru nie byl niesiony wylacznie kolorem. #}
+      <span>{{ label }}{% if wartosc %}: {{ wartosc }}{% endif %}</span>
+    </button>
+    {% endfor %}
+    <button class="qchip more {% if has_adv %}on{% endif %}" type="button"
+            data-filters-toggle aria-controls="filters-panel"
+            aria-expanded="{{ 'true' if has_adv else 'false' }}">
+      {{ icon('sliders', 'ic') }} <span>Więcej filtrów</span>
+    </button>
+  </div>
+  {% else %}
+  <button class="filters-toggle" type="button" data-filters-toggle
+          aria-controls="filters-panel" aria-expanded="{{ 'true' if has_adv else 'false' }}">
     {{ icon('sliders', 'ic') }} <span>Filtry</span>
     {% if has_adv %}<span class="dot"></span>{% endif %}
   </button>
+  {% endif %}
 
-  <div class="filters" data-filters {% if not has_adv %}hidden{% endif %}>
+  <div class="filters" id="filters-panel" data-filters {% if not has_adv %}hidden{% endif %}>
     <div class="fgrid">
       <label>Sygnatura
         <input type="text" name="signature" value="{{ Q.signature if Q else '' }}" placeholder="np. KIO 1919/16">

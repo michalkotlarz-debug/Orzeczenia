@@ -159,13 +159,51 @@
     });
   });
 
+  /* Panel filtrow otwieraja dzis dwie rzeczy: przycisk "Filtry" (strona wynikow)
+     i pasek chipow pod wyszukiwarka (strona glowna). Panel szukany jest przez
+     aria-controls, a nie przez rodzenstwo - chipy siedza we wlasnym kontenerze,
+     wiec dawne btn.parentElement.querySelector juz by go nie znalazlo. */
+  function panelFor(btn) {
+    var id = btn.getAttribute("aria-controls");
+    var form = btn.closest("form");
+    return (id && document.getElementById(id)) ||
+           (form && form.querySelector("[data-filters]"));
+  }
+
+  function setPanel(panel, open) {
+    if (open) { panel.removeAttribute("hidden"); } else { panel.setAttribute("hidden", ""); }
+    // Stan trzeba odswiezyc na WSZYSTKICH kontrolkach tego panelu, nie tylko na
+    // klinietej - chipow jest piec i kazdy oglasza ten sam panel.
+    var id = panel.getAttribute("id");
+    var kontrolki = id ? document.querySelectorAll('[aria-controls="' + id + '"]')
+                       : [];
+    Array.prototype.forEach.call(kontrolki, function (b) {
+      b.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  }
+
   document.querySelectorAll("[data-filters-toggle]").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      var panel = btn.parentElement.querySelector("[data-filters]");
+      var panel = panelFor(btn);
+      if (panel) setPanel(panel, panel.hasAttribute("hidden"));
+    });
+  });
+
+  /* Chip otwiera panel i stawia kursor na swoim polu - nigdy nie zamyka, bo
+     klikniecie "Data" po "Sad" ma przeniesc do daty, a nie schowac filtry. */
+  document.querySelectorAll("[data-filters-open]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var panel = panelFor(btn);
       if (!panel) return;
-      var open = panel.hasAttribute("hidden");
-      if (open) { panel.removeAttribute("hidden"); } else { panel.setAttribute("hidden", ""); }
-      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      setPanel(panel, true);
+      var pole = btn.getAttribute("data-focus");
+      if (!pole) return;
+      // Fokus dopiero po zdjeciu [hidden] - na ukrytym elemencie nie zadziala.
+      var input = panel.querySelector('[name="' + pole + '"]');
+      if (input) {
+        input.focus();
+        if (input.scrollIntoView) input.scrollIntoView({ block: "nearest" });
+      }
     });
   });
 

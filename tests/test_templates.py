@@ -116,9 +116,15 @@ try:
     reg = make_registry()
     q = Query(phrase="wadium")
 
-    render("home.html", "1-strona-glowna.html", latest_rows=reg.search(Query(sort="pub_desc")).hits,
+    h = render("home.html", "1-strona-glowna.html", latest_rows=reg.search(Query(sort="pub_desc")).hits,
           date_field="publication", baza_razem=34078, latest_akty=[], baza_akty_razem=12426,
           baza_akty_jednolite=2536, top_hasla=[{"name": "Zamówienia publiczne", "count": 34065}])
+    assert 'class="quickbar"' in h, "brak paska szybkich filtrów na stronie głównej"
+    assert "hero-stats" in h, "liczniki nie trafiły do pasa hero"
+    assert "stat-bar" not in h, "stara sekcja z licznikami wciąż się renderuje"
+    assert 'id="filters-panel"' in h, "panel filtrów bez id, chipy nie będą go widziały"
+    # Szukamy klasy, nie samego słowa - chip "Więcej filtrów" ma data-filters-toggle.
+    assert 'class="filters-toggle"' not in h, "obok chipów nie ma już być starego przycisku Filtry"
 
     res = reg.search(q, page=1)
     h = render("results.html", "2-wyniki.html", q="wadium", res=res, query=q, page=1,
@@ -126,6 +132,10 @@ try:
     assert "Wszystkie" in h and "Sądy powszechne" in h, "brak zakładek źródeł"
     assert "/orzeczenie/ms/" in h, "brak linku do pełnej treści"
     assert "Powodowie" in h, "opis ze źródła nie trafił na kartę"
+    # Strona wyników ma już dwa rzędy pigułek (zakładki + aktywne filtry do zdjęcia),
+    # więc chipy-otwieracze zostają wyłączone - flaga nie może tu wyciec.
+    assert "quickbar" not in h, "pasek chipów wyciekł na stronę wyników"
+    assert "filters-toggle" in h, "strona wyników ma zostać przy przycisku Filtry"
 
     doc = reg.document("kio", "35751")
     h = render("document.html", "3-orzeczenie-kio.html", d=doc, q="")

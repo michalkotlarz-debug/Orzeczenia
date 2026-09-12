@@ -6,16 +6,18 @@
 <section class="hero">
   <div class="wrap narrow">
     <h1>Orzeczenia sądowe,<br>na wyciągnięcie ręki.</h1>
-    {% include "_searchform.html" %}
+    {% with quickfilters = true %}{% include "_searchform.html" %}{% endwith %}
     <p class="lede">Orzeczenia sądów powszechnych i KIO — razem z sentencją i uzasadnieniem.</p>
-  </div>
-</section>
-
-<section class="wrap">
-  <div class="stat-bar">
-    <a class="stat" href="/szukaj"><b>{{ "{:,}".format(baza_razem).replace(",", " ") }}</b><span>orzeczeń w bazie</span></a>
-    <a class="stat" href="/akty"><b>{{ "{:,}".format(baza_akty_razem).replace(",", " ") }}</b><span>aktów prawnych</span></a>
-    <a class="stat" href="/akty?jednolity=1"><b>{{ "{:,}".format(baza_akty_jednolite).replace(",", " ") }}</b><span>z tekstem jednolitym</span></a>
+    {# Liczby siedzialy nizej jako osobna sekcja z wlasnym paddingiem i przez to
+       czytaly sie jak drugi naglowek strony. Tutaj sa cichym wierszem domykajacym
+       pas hero - ta sama tresc, bez pretensji do bycia sekcja. #}
+    <p class="hero-stats">
+      <a href="/szukaj"><b>{{ "{:,}".format(baza_razem).replace(",", " ") }}</b> orzeczeń w bazie</a>
+      <span class="sep">·</span>
+      <a href="/akty"><b>{{ "{:,}".format(baza_akty_razem).replace(",", " ") }}</b> aktów prawnych</a>
+      <span class="sep">·</span>
+      <a href="/akty?jednolity=1"><b>{{ "{:,}".format(baza_akty_jednolite).replace(",", " ") }}</b> z tekstem jednolitym</a>
+    </p>
   </div>
 </section>
 
