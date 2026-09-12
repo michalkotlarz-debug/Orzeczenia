@@ -30,11 +30,15 @@ $SSH "$HOST" "
   sudo docker build -t orzecznik:latest .
   sudo docker rm -f orzecznik || true
   # Limit pamieci: import aktow parsuje PDF-y w tym samym procesie co serwer WWW
-  # i potrafi urosnac do ~3 GB. Bez limitu przepelnienie bylo globalnym OOM-em,
-  # ktory zabijal procesy w calym systemie (takze baze i zadania wsadowe obok).
-  # Z limitem przepelnienie ubija wylacznie ten kontener, a --restart go podnosi.
+  # i potrafi urosnac o kilkaset MB na przebieg. Bez limitu przepelnienie bylo
+  # globalnym OOM-em zabijajacym procesy w calym systemie (takze baze i zadania
+  # wsadowe obok); z limitem ubija wylacznie ten kontener, a --restart go podnosi.
+  # 2000m dobrane tak, zeby przebieg importu mial zapas i konczyl sie zapisem -
+  # przy 1500m ginal w polowie, wiec kontener restartowal sie w kolko i do bazy
+  # nie trafialo nic. Reszta RAM-u (serwer ma 3,8 GB) zostaje dla Postgresa i
+  # zadan wsadowych.
   sudo docker run -d --name orzecznik --network host --restart unless-stopped \
-    -m 1500m --memory-swap 1500m --env-file .env orzecznik:latest
+    -m 2000m --memory-swap 2000m --env-file .env orzecznik:latest
   sleep 3
   echo '--- health check ---'
   curl -s http://127.0.0.1:8000/api/health

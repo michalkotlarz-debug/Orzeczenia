@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from io import BytesIO
+from io import BytesIO, StringIO
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -29,12 +29,50 @@ from ..parse.pdf_tables import pdf_to_text_with_tables
 
 log = logging.getLogger("orzecznik.eli")
 
+# Progi rozmiaru PDF-a. Zwykły akt waży poniżej megabajta; grube załączniki
+# (programy wieloletnie, mapy, tabele na setki stron) potrafią mieć kilkanaście
+# i to one wywracały import - parsowanie odbywa się w tym samym procesie co
+# serwer WWW, więc jego pamięć jest pamięcią całej aplikacji.
+_PDF_TABLES_MAX_BYTES = 8 * 1024 * 1024    # powyżej: bez wykrywania tabel
+_PDF_MAX_BYTES = 20 * 1024 * 1024          # powyżej: akt zapisany bez treści
+
+
+class _PdfTooBigForTables(Exception):
+    """Sygnał do zejścia na lżejszy parser - łapany przez ten sam `except`,
+    który obsługuje awarie wykrywania tabel."""
+
 
 def pdf_to_text(data: bytes) -> str:
-    """Wyciąga czysty tekst z bajtów PDF. Same bajty nigdzie nie trafiają na
-    dysk - wywołujący je od razu odrzuca po tym wywołaniu."""
-    from pdfminer.high_level import extract_text
-    return extract_text(BytesIO(data)) or ""
+    """Wyciąga czysty tekst z bajtów PDF, strona po stronie. Same bajty nigdzie
+    nie trafiają na dysk - wywołujący je od razu odrzuca po tym wywołaniu.
+
+    Dlaczego nie `extract_text()` na całym dokumencie: pdfminer zamienia każdy
+    znak w osobny obiekt Pythona (pozycja, wymiary, czcionka), a przy jednym
+    wywołaniu na cały plik trzyma je wszystkie naraz i dokłada do tego cache
+    czcionek. Na M.P. 2021 poz. 414 (311 stron, 775 czcionek, 13 MB) dawało to
+    ponad 2,8 GB i proces ginął, blokując import na dobę. Tutaj po każdej stronie
+    zostaje już tylko jej gotowy tekst, a obiekty idą do wyrzucenia - w pamięci
+    siedzi jedna strona zamiast trzystu."""
+    from pdfminer.converter import TextConverter
+    from pdfminer.layout import LAParams
+    from pdfminer.pdfinterp import PDFPageInterpreter, PDFResourceManager
+    from pdfminer.pdfpage import PDFPage
+
+    strony: list[str] = []
+    # caching=False: bez tego menedżer zasobów trzyma rozpakowane czcionki
+    # i strumienie wszystkich stron do końca dokumentu.
+    manager = PDFResourceManager(caching=False)
+    with BytesIO(data) as fp:
+        for page in PDFPage.get_pages(fp, caching=False):
+            buf = StringIO()
+            device = TextConverter(manager, buf, laparams=LAParams())
+            try:
+                PDFPageInterpreter(manager, device).process_page(page)
+                strony.append(buf.getvalue())
+            finally:
+                device.close()
+                buf.close()
+    return "\n".join(strony)
 
 
 @dataclass
@@ -99,12 +137,30 @@ class EliClient:
             try:
                 pdf_bytes = self.http.get_bytes(
                     self._url(f"/acts/{publisher}/{year}/{pos}/text.pdf"))
+                if len(pdf_bytes) > _PDF_MAX_BYTES:
+                    # Import zatrzymał się na M.P. 2021 poz. 414 (13 MB, załącznik
+                    # z programem wieloletnim): parser zjadał całą pamięć procesu,
+                    # kontener ginął i po restarcie brał ten sam akt od nowa - przez
+                    # dobę nie wszedł do bazy ani jeden nowy dokument. Sam akt jest
+                    # wart zapisania (metryka, tytuł, data), więc zwracamy brak
+                    # treści zamiast blokować kolejkę.
+                    log.warning("%s/%s/%s: PDF %.1f MB przekracza limit %.0f MB - "
+                                "zapisuję akt bez treści",
+                                publisher, year, pos, len(pdf_bytes) / 1048576,
+                                _PDF_MAX_BYTES / 1048576)
+                    return None, None
                 try:
                     # Ścieżka z wykrywaniem tabel po geometrii (pdfplumber) -
                     # patrz parse/pdf_tables.py. Awaria tego kroku (np.
                     # nietypowo zbudowany PDF) nie może przekreślić importu
                     # całego aktu - wracamy wtedy do zwykłego liniowego
                     # tekstu pdfminer, tak jak dotąd.
+                    if len(pdf_bytes) > _PDF_TABLES_MAX_BYTES:
+                        # Wykrywanie tabel trzyma w pamięci geometrię każdej strony,
+                        # więc przy grubym dokumencie kosztuje wielokrotność jego
+                        # rozmiaru. Zwykły akt ma poniżej megabajta - powyżej progu
+                        # idziemy od razu lżejszą ścieżką liniową.
+                        raise _PdfTooBigForTables
                     text = pdf_to_text_with_tables(pdf_bytes).strip()
                 except Exception:
                     log.warning("%s/%s/%s: wykrywanie tabel w PDF nie powiodło się, "
