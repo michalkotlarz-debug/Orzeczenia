@@ -201,9 +201,6 @@ main h2{font-size:17px;font-weight:650;letter-spacing:-.01em}
 .hasla-group[open]>summary>span:first-child::before{transform:rotate(90deg)}
 .hasla-group>summary:hover{color:var(--navy)}
 .hasla-group>summary:hover>span:first-child::before{border-left-color:var(--navy)}
-.hasla-nums{display:inline-flex;align-items:center;gap:7px;flex:none}
-.hasla-more{font-family:var(--mono);font-size:10.5px;color:var(--navy);
-  background:var(--navy-soft);border-radius:999px;padding:1px 6px}
 .hasla-children{padding-left:15px;margin-bottom:4px;border-left:1px solid var(--line-soft)}
 .hasla-child{padding-left:10px;font-size:13.5px}
 /* Odsyłacz do samego hasła nadrzędnego ma reagować jak każda inna pozycja -

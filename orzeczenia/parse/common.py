@@ -401,6 +401,32 @@ _THEMATIC_CANONICAL = {
     # --- węższe hasła wchłonięte przez szersze (decyzja redakcyjna) ---
     "zatrzymanie": "Tymczasowe aresztowanie lub zatrzymanie",
     "tymczasowe aresztowanie": "Tymczasowe aresztowanie lub zatrzymanie",
+
+    # --- odwrócony szyk: portal zapisuje przymiotnik przed rzeczownikiem
+    # ("Energetyczne prawo"), przez co hasło nie trafia pod swoją kategorię ---
+    "energetyczne prawo": "Prawo energetyczne",
+    "bankowe prawo": "Prawo bankowe",
+    "telekomunikacyjne prawo": "Prawo telekomunikacyjne",
+    "prasowe prawo": "Prawo prasowe",
+    "przewozowe prawo": "Prawo przewozowe",
+    "autorskie prawo": "Prawo autorskie",
+    "międzynarodowe prawo": "Prawo międzynarodowe",
+    # Upadłość i restrukturyzacja trafiają do jednego hasła - pod nazwą ustawy,
+    # którą portal publikuje najczęściej.
+    "upadłościowe prawo": "Prawo upadłościowe i naprawcze",
+    "prawo upadłościowe": "Prawo upadłościowe i naprawcze",
+    "prawo restrukturyzacyjne": "Prawo upadłościowe i naprawcze",
+    "prawo upadłościowe i restrukturyzacyjne": "Prawo upadłościowe i naprawcze",
+    "dyscyplinarne postępowanie": "Postępowanie dyscyplinarne",
+    "dowodowe postępowanie": "Postępowanie dowodowe (przepisy ogólne)",
+    "upadłościowe postępowanie": "Postępowanie upadłościowe",
+
+    # --- synonimy: dwie nazwy jednej instytucji ---
+    "klauzule abuzywne": "Klauzule niedozwolone",       # art. 385(1) k.c.
+    "koszty procesowe": "Koszty procesu",               # termin z k.p.c.
+    "uchwała wspólnoty": "Uchwały wspólnoty mieszkaniowej",
+    "zwolnienie od kosztów": "Zwolnienie od kosztów sądowych",
+    "czynności cywilnoprawne": "Czynności prawne",
 }
 
 
@@ -424,6 +450,23 @@ def _acronym_form(word: str) -> str | None:
     if all(c.isupper() for c in letters) or core.lower() in _THEMATIC_ACRONYMS:
         return word.replace(core, core.upper())
     return None
+
+
+# Końcówki fleksyjne obcinane przy szukaniu wspólnego rdzenia, od najdłuższych.
+_THEMATIC_ENDINGS = ("ami", "ach", "ów", "om", "ie", "ia", "y", "i", "e", "a", "o", "ą", "ę", "u")
+_THEMATIC_FOLD = str.maketrans("óąćęłńśźż", "oacelnszz")
+
+
+def thematic_stem(word: str) -> str:
+    """Rdzeń słowa - na tyle zgrubny, żeby "Domniemania" i "Domniemanie" spotkały
+    się w jednym haśle, ale nie tak zgrubny, żeby skleić "Rentę" z "Rentownością".
+    Rdzeń krótszy niż 4 znaki zostaje bez obcinania - przy krótkich słowach
+    dopasowanie po trzech literach łączyłoby rzeczy niezwiązane."""
+    w = "".join(c for c in word.lower().translate(_THEMATIC_FOLD) if c.isalnum() or c == "-")
+    for end in _THEMATIC_ENDINGS:
+        if len(w) - len(end) >= 4 and w.endswith(end):
+            return w[: -len(end)]
+    return w
 
 
 def normalize_thematic(name: str | None) -> str:

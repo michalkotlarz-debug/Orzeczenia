@@ -35,17 +35,18 @@
          policzyłoby się dwa razy. Samo hasło nadrzędne ma swój licznik niżej. #}
       <summary class="hasla-item hasla-parent">
         <span>{{ h.name }}</span>
-        <span class="hasla-nums">
-          <b>{{ "{:,}".format(h.total).replace(",", " ") }}</b>
-          <span class="hasla-more">+{{ h.children|length }}</span>
-        </span>
+        <b>{{ "{:,}".format(h.total).replace(",", " ") }}</b>
       </summary>
       <div class="hasla-children">
+        {# Kategoria zbiorcza (np. "Czynności") nie istnieje jako hasło w bazie -
+           ma tylko podkategorie, więc nie ma czego pokazać pod "tylko …". #}
+        {% if h.count %}
         <a class="hasla-item hasla-child" href="/szukaj?thematic={{ h.name|urlencode }}"
            data-child-name="{{ h.name|lower }}">
           <span class="hasla-self">tylko „{{ h.name }}”</span>
           <b>{{ "{:,}".format(h.count).replace(",", " ") }}</b>
         </a>
+        {% endif %}
         {% for c in h.children %}
         <a class="hasla-item hasla-child" href="/szukaj?thematic={{ c.name|urlencode }}"
            data-child-name="{{ c.name|lower }}">

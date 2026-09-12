@@ -596,6 +596,66 @@ with tempfile.TemporaryDirectory() as tmp:
     store.close()
 
 # ----------------------------------------------------------------------
+print("\n== hierarchia po rdzeniu: liczba mnoga nie rozbija kategorii ==")
+with tempfile.TemporaryDirectory() as tmp:
+    store = Store(f"sqlite:///{Path(tmp) / 'rdzen.db'}", 30)
+    for i, thematic in enumerate([["Domniemania"], ["Domniemania faktyczne"],
+                                  ["Domniemanie niewinności"], ["Renta"],
+                                  ["Rentowność inwestycji"]]):
+        store._run(
+            "INSERT INTO orzeczenia (source, doc_id, thematic, source_url, "
+            "first_seen_at, last_seen_at) VALUES (?,?,?,?,?,?)",
+            ("ms", f"r{i}", json.dumps(thematic, ensure_ascii=False), "",
+             "2026-09-12", "2026-09-12"))
+
+    tree = {n["name"]: n for n in store.thematic_tree()}
+    check("liczba pojedyncza trafia pod haslo w liczbie mnogiej",
+         sorted(c["name"] for c in tree["Domniemania"]["children"]),
+         ["Domniemania faktyczne", "Domniemanie niewinności"])
+    check("podobny poczatek to za malo - 'Rentownosc' nie wpada pod 'Renta'",
+         tree["Renta"]["children"], [])
+    check("'Rentownosc' zostaje osobnym haslem", "Rentowność inwestycji" in tree, True)
+    store.close()
+
+# ----------------------------------------------------------------------
+print("\n== kategorie zbiorcze dla rodzin bez wlasnego hasla nadrzednego ==")
+with tempfile.TemporaryDirectory() as tmp:
+    store = Store(f"sqlite:///{Path(tmp) / 'parasol.db'}", 30)
+    for i, thematic in enumerate([["Czynności prawne"], ["Czynności procesowe"],
+                                  ["Odrzucenie pozwu"], ["Odrzucenie apelacji"],
+                                  ["Odrzucenie spadku"], ["Upadłość"],
+                                  ["Prawo upadłościowe i naprawcze"],
+                                  ["Prawo restrukturyzacyjne"],
+                                  ["Skarga pauliańska"]]):
+        store._run(
+            "INSERT INTO orzeczenia (source, doc_id, thematic, source_url, "
+            "first_seen_at, last_seen_at) VALUES (?,?,?,?,?,?)",
+            ("ms", f"p{i}", json.dumps(thematic, ensure_ascii=False), "",
+             "2026-09-12", "2026-09-12"))
+
+    tree = {n["name"]: n for n in store.thematic_tree()}
+    check("parasol powstaje, choc portal nie publikuje samego hasla",
+         sorted(c["name"] for c in tree["Czynności"]["children"]),
+         ["Czynności prawne", "Czynności procesowe"])
+    check("parasol nie ma wlasnych orzeczen", tree["Czynności"]["count"], 0)
+    check("parasol sumuje galaz", tree["Czynności"]["total"], 2)
+    check("'Odrzucenie spadku' zostaje samodzielne, to inna instytucja",
+         "Odrzucenie spadku" in tree, True)
+    check("pozostale odrzucenia pod parasolem",
+         sorted(c["name"] for c in tree["Odrzucenie"]["children"]),
+         ["Odrzucenie apelacji", "Odrzucenie pozwu"])
+    check("reczne przypisanie rodzica dziala mimo innej nazwy",
+         [c["name"] for c in tree["Upadłość"]["children"]],
+         ["Prawo upadłościowe i naprawcze"])
+    check("upadlosciowe i restrukturyzacyjne to jedno haslo, wiec liczy 2 orzeczenia",
+         tree["Upadłość"]["children"][0]["count"], 2)
+    check("kazde pozostale prawo zostaje osobno - brak parasola 'Prawo'",
+         "Prawo" in tree, False)
+    check("jedno haslo to za malo na parasol - 'Skarga' nie powstaje",
+         "Skarga" in tree, False)
+    store.close()
+
+# ----------------------------------------------------------------------
 print("\n" + "=" * 62)
 if failures:
     print(f"NIEPOWODZENIA ({len(failures)}): " + ", ".join(failures))

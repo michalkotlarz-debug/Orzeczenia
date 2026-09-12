@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 from urllib.parse import urlparse
 
-from .parse.common import normalize_thematic, squash
+from .parse.common import normalize_thematic, squash, thematic_stem
 from .sources.base import Hit
 
 log = logging.getLogger("orzecznik.store")
@@ -234,12 +234,43 @@ def _thematic_json(values: Iterable[str] | None) -> str:
 
 
 def _is_thematic_parent(parent: str, child: str) -> bool:
-    """Czy `parent` jest szerszym hasłem dla `child`? Granica musi wypaść na
-    całym słowie albo na myślniku rozdzielającym podkategorię - inaczej "Renta"
-    byłaby rodzicem dla "Rentowność", a "Umowa" dla "Umowy międzynarodowe"."""
-    if len(child) <= len(parent) or not child.lower().startswith(parent.lower()):
+    """Czy `parent` jest szerszym hasłem dla `child`?
+
+    Porównanie idzie słowo po słowie, a ostatnie słowo hasła nadrzędnego
+    dopasowuje się po rdzeniu - inaczej "Domniemania" i "Domniemanie niewinności"
+    rozjeżdżałyby się na samej końcówce liczby, mimo że to jedno zagadnienie.
+    Wcześniejsze słowa muszą się zgadzać dokładnie, a rdzeń chroni przed
+    zlepieniem "Renty" z "Rentownością"."""
+    parent_words = parent.lower().split(" ")
+    child_words = child.lower().replace(" – ", " - ").split(" ")
+    if len(child_words) <= len(parent_words):
         return False
-    return child[len(parent):].startswith((" - ", " – ", " "))
+    if child_words[:len(parent_words) - 1] != parent_words[:-1]:
+        return False
+    pivot = len(parent_words) - 1
+    if child_words[pivot] == parent_words[-1]:
+        return True
+    return thematic_stem(child_words[pivot]) == thematic_stem(parent_words[-1])
+
+
+# Kategorie zbiorcze: portal nie publikuje hasła nadrzędnego (nie ma samego
+# "Czynności" ani "Wysokość"), więc rodzina rozsypywała się po indeksie na
+# kilkanaście osobnych wpisów. Parasol powstaje tylko wtedy, gdy naprawdę ma co
+# zebrać - przy mniej niż dwóch pasujących hasłach nic się nie dzieje.
+_THEMATIC_UMBRELLAS = ("Czynności", "Wysokość", "Świadczenia", "Skarga", "Nieważność",
+                       "Koszty", "Wynagrodzenie", "Uchwały", "Odrzucenie", "Upadłość")
+
+# Hasła, które mimo pasującej nazwy zostają samodzielne - to inna instytucja
+# prawna niż reszta rodziny, mimo wspólnego pierwszego słowa.
+_THEMATIC_STANDALONE = frozenset({
+    "Odrzucenie spadku",        # prawo spadkowe, reszta rodziny to procedura
+})
+
+# Hasła przypisane do kategorii ręcznie, bo ich nazwa nie zaczyna się od niej.
+_THEMATIC_PARENT = {
+    "Prawo upadłościowe i naprawcze": "Upadłość",
+    "Postępowanie upadłościowe": "Upadłość",
+}
 
 
 def build_thematic_tree(hasla: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -256,8 +287,26 @@ def build_thematic_tree(hasla: list[dict[str, Any]]) -> list[dict[str, Any]]:
     orzeczeń, a obok liczbę podkategorii. Sumowanie wprowadzałoby w błąd, bo
     orzeczenie ma zwykle oba hasła naraz i liczyłoby się podwójnie."""
     by_name = {h["name"]: h for h in hasla}
+
+    # Parasole wchodzą do puli jako hasła bez własnych orzeczeń (count 0) -
+    # dalsza część funkcji traktuje je jak każde inne hasło nadrzędne.
+    for umbrella in _THEMATIC_UMBRELLAS:
+        if umbrella in by_name:
+            continue
+        stem = thematic_stem(umbrella)
+        czlonkowie = [n for n in by_name
+                      if " " in n and n not in _THEMATIC_STANDALONE
+                      and thematic_stem(n.split(" ")[0]) == stem]
+        if len(czlonkowie) >= 2:
+            by_name[umbrella] = {"name": umbrella, "count": 0}
+
     parent_of: dict[str, str] = {}
     for name in by_name:
+        if name in _THEMATIC_STANDALONE:
+            continue
+        if (reczny := _THEMATIC_PARENT.get(name)) and reczny in by_name:
+            parent_of[name] = reczny
+            continue
         best = ""
         for candidate in by_name:
             if candidate != name and len(candidate) > len(best) \

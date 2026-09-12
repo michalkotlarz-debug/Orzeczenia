@@ -175,7 +175,8 @@ try:
     assert '>B<' not in h, "litera bez hasła nie powinna w ogóle się renderować"
     assert "hasla-group" in h, "hasło z podkategoriami ma być rozwijalną grupą"
     assert h.count("data-child-name") == 3, "dwie podkategorie + link do samego hasła nadrzędnego"
-    assert "Kara umowna" in h and "+2" in h, "brak podkategorii albo ich licznika"
+    assert "Kara umowna" in h, "brak podkategorii w rozwinięciu"
+    assert "+2" not in h, "przy kategorii ma być sama liczba, bez licznika podkategorii"
     assert ">80<" in h, "nagłówek grupy pokazuje licznik całej gałęzi (total), nie własny"
     assert ">5<" in h, "własny licznik hasła nadrzędnego widoczny przy 'tylko …'"
     assert 'data-name="kara kara umowna kara porządkowa"' in h, \
